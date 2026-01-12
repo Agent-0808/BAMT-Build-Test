@@ -44,12 +44,9 @@ jobs:
           script-name: main.pyw
           mode: onefile
 
-          cache: true
-          cache-category: ba_modding_toolkit_v1
-
           low-memory: true
           # 经测试使用mingw64可以避免堆内存问题
-          mingw64: true
+          # mingw64: true
           enable-plugins: tk-inter
           # 包含代码依赖包
           include-package: |
