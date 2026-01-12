@@ -1,6 +1,7 @@
 # ui/tabs/asset_packer_tab.py
 
 import tkinter as tk
+import ttkbootstrap as tb
 from tkinter import messagebox
 from pathlib import Path
 from i18n import t
@@ -31,7 +32,7 @@ class AssetPackerTab(TabFrame):
         )
         
         # 旧版 Spine 文件名修正选项
-        options_frame = tk.Frame(self, bg=Theme.FRAME_BG)
+        options_frame = tb.Frame(self)
         options_frame.pack(fill=tk.X, pady=(5, 0))
         
         self.spine38_namefix_checkbutton = UIComponents.create_checkbutton(
@@ -42,14 +43,14 @@ class AssetPackerTab(TabFrame):
         self.spine38_namefix_checkbutton.pack(anchor=tk.W)
 
         # 操作按钮区域
-        action_button_frame = tk.Frame(self)
+        action_button_frame = tb.Frame(self)
         action_button_frame.pack(fill=tk.X, pady=10)
         action_button_frame.grid_columnconfigure((0, 1), weight=1)
 
-        run_button = UIComponents.create_button(action_button_frame, t("action.pack"), self.run_replacement_thread, bg_color=Theme.BUTTON_SUCCESS_BG, padx=15, pady=8)
+        run_button = UIComponents.create_button(action_button_frame, t("action.pack"), self.run_replacement_thread, bootstyle="success", style="large")
         run_button.grid(row=0, column=0, sticky="ew", padx=(0, 5), pady=10)
         
-        self.replace_button = UIComponents.create_button(action_button_frame, t("action.replace_original"), self.replace_original_thread, bg_color=Theme.BUTTON_DANGER_BG, padx=15, pady=8, state="disabled")
+        self.replace_button = UIComponents.create_button(action_button_frame, t("action.replace_original"), self.replace_original_thread, bootstyle="danger", state="disabled", style="large")
         self.replace_button.grid(row=0, column=1, sticky="ew", padx=(5, 0), pady=10)
 
     def drop_bundle(self, event):

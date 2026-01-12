@@ -1,27 +1,30 @@
 # ui/dialogs.py
 
 import tkinter as tk
-import ttkbootstrap as ttk
+import ttkbootstrap as tb
 import tkinter.messagebox as messagebox
+from ttkbootstrap.widgets.scrolled import ScrolledFrame
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 if TYPE_CHECKING:
     from ui.app import App
 
 from i18n import t
-from .components import Theme, UIComponents, ScrollableFrame, SettingRow
+from utils import get_environment_info
+from .components import Theme, UIComponents, SettingRow
 from .utils import select_file
 
-class SettingsDialog(tk.Toplevel):
+class SettingsDialog(tb.Toplevel):
     def __init__(self, master, app_instance: "App"):
         super().__init__(master)
         self.app = app_instance
 
         self._setup_window()
 
-        self.scroll_frame = ScrollableFrame(self)
+        self.scroll_frame = ScrolledFrame(self, autohide=True)
         self.scroll_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
-        self.content_area = self.scroll_frame.viewport
+        self.content_area = tb.Frame(self.scroll_frame)
+        self.content_area.pack(fill=tk.BOTH, expand=True, padx=(0, 15))
 
         self._init_path_settings()
         self._init_app_settings()
@@ -31,16 +34,13 @@ class SettingsDialog(tk.Toplevel):
 
         self._init_footer_buttons()
 
-        self._setup_variable_traces()
-
     def _setup_window(self):
         """设置窗口基本属性"""
         self.title(t("ui.settings.title"))
         self.geometry("600x700")
-        self.configure(bg=Theme.WINDOW_BG)
         self.transient(self.master)
 
-    def _create_section(self, title: str) -> ttk.Labelframe:
+    def _create_section(self, title: str) -> tb.Labelframe:
         """
         创建一个带有标题的LabelFrame
 
@@ -50,7 +50,7 @@ class SettingsDialog(tk.Toplevel):
         Returns:
             创建的LabelFrame组件
         """
-        section = ttk.Labelframe(
+        section = tb.Labelframe(
             self.content_area,
             text=title,
             bootstyle="default"
@@ -70,6 +70,18 @@ class SettingsDialog(tk.Toplevel):
             open_cmd=self.app.open_game_resource_in_explorer
         )
 
+    def _init_app_settings(self):
+        """初始化应用设置"""
+        section = self._create_section(t("ui.settings.group_app"))
+
+        self.language_combo = SettingRow.create_combobox_row(
+            section,
+            label=t("ui.label.language"),
+            text_var=self.app.language_var,
+            values=self.app.available_languages
+        )
+        self.language_combo.bind("<<ComboboxSelected>>", self._on_language_changed)
+
         SettingRow.create_path_selector(
             section,
             label=t("ui.label.output_dir"),
@@ -78,15 +90,12 @@ class SettingsDialog(tk.Toplevel):
             open_cmd=self.app.open_output_dir_in_explorer
         )
 
-    def _init_app_settings(self):
-        """初始化应用设置"""
-        section = self._create_section(t("ui.settings.group_app"))
-
-        SettingRow.create_combobox_row(
+        SettingRow.create_button_row(
             section,
-            label=t("ui.label.language"),
-            text_var=self.app.language_var,
-            values=self.app.available_languages
+            label=t("ui.label.environment"),
+            button_text=t("action.print"),
+            command=self.print_environment_info,
+            bootstyle="info"
         )
 
     def _init_global_options(self):
@@ -97,7 +106,8 @@ class SettingsDialog(tk.Toplevel):
             section,
             label=t("option.crc_correction"),
             variable=self.app.enable_crc_correction_var,
-            tooltip="测试文本"
+            tooltip="测试文本",
+            command=self._on_crc_changed
         )
 
         self.padding_checkbox = SettingRow.create_switch(
@@ -112,7 +122,7 @@ class SettingsDialog(tk.Toplevel):
             variable=self.app.create_backup_var
         )
 
-        SettingRow.create_combobox_row(
+        SettingRow.create_radiobutton_row(
             section,
             label=t("ui.label.compression_method"),
             text_var=self.app.compression_method_var,
@@ -180,33 +190,38 @@ class SettingsDialog(tk.Toplevel):
 
     def _init_footer_buttons(self):
         """初始化底部按钮栏"""
-        footer_frame = ttk.Frame(self)
+        footer_frame = tb.Frame(self)
         footer_frame.pack(fill=tk.X, padx=15, pady=15)
 
         footer_frame.columnconfigure(0, weight=1)
         footer_frame.columnconfigure(1, weight=1)
         footer_frame.columnconfigure(2, weight=1)
 
-        save_button = ttk.Button(footer_frame, text=t("common.save"), command=self.app.save_current_config, bootstyle="success")
+        save_button = UIComponents.create_button(footer_frame, text=t("common.save"), command=self.app.save_current_config, bootstyle="success")
         save_button.grid(row=0, column=0, sticky="ew", padx=(0, 5))
 
-        load_button = ttk.Button(footer_frame, text=t("common.load"), command=self.load_config, bootstyle="warning")
+        load_button = UIComponents.create_button(footer_frame, text=t("common.load"), command=self.load_config, bootstyle="warning") 
         load_button.grid(row=0, column=1, sticky="ew", padx=5)
 
-        reset_button = ttk.Button(footer_frame, text=t("common.reset"), command=self.reset_to_default, bootstyle="danger")
+        reset_button = UIComponents.create_button(footer_frame, text=t("common.reset"), command=self.reset_to_default, bootstyle="danger")
         reset_button.grid(row=0, column=2, sticky="ew", padx=(5, 0))
 
-    def _setup_variable_traces(self):
-        """设置变量变化监听"""
-        self.app.enable_crc_correction_var.trace_add("write", self._on_crc_change)
-
-    def _on_crc_change(self, *args):
+    def _on_crc_changed(self):
         """CRC修正复选框状态变化时的处理"""
+        if not self.winfo_exists():
+            return
         if self.app.enable_crc_correction_var.get():
             self.padding_checkbox.config(state=tk.NORMAL)
         else:
             self.app.enable_padding_var.set(False)
             self.padding_checkbox.config(state=tk.DISABLED)
+
+    def _on_language_changed(self, event):
+        """语言选项变化时的处理"""
+        if messagebox.askyesno(t("common.tip"), t("message.config.language_changed"), parent=self):
+            self.app.save_current_config()
+            self.destroy()
+            self.master.quit()
 
     def load_config(self):
         """加载配置文件并更新UI"""
@@ -215,11 +230,11 @@ class SettingsDialog(tk.Toplevel):
             messagebox.showinfo(t("common.success"), t("message.config.loaded"))
         else:
             self.app.logger.log(t("log.config.load_failed"))
-            messagebox.showerror(t("common.error"), t("message.config.load_failed"))
+            messagebox.showerror(t("common.error"), t("message.config.load_failed"), parent=self)
 
     def reset_to_default(self):
         """重置为默认设置"""
-        if messagebox.askyesno(t("common.tip"), t("message.confirm_reset_settings")):
+        if messagebox.askyesno(t("common.tip"), t("message.confirm_reset_settings"), parent=self):
             self.app._set_default_values()
             self.app.logger.log(t("log.config.reset"))
 
@@ -246,3 +261,7 @@ class SettingsDialog(tk.Toplevel):
             ),
             logger=self.app.logger.log
         )
+
+    def print_environment_info(self):
+        """打印环境信息"""
+        self.app.logger.log(get_environment_info())

@@ -1,8 +1,8 @@
 # ui/tabs/asset_extractor_tab.py
 
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
-import ttkbootstrap
+import ttkbootstrap as tb
+from tkinter import messagebox
 from pathlib import Path
 import os
 
@@ -34,11 +34,11 @@ class AssetExtractorTab(TabFrame):
         )
 
         # 资源类型选项
-        options_frame = ttkbootstrap.Labelframe(self, text=t("ui.extractor.options_title"))
+        options_frame = tb.Labelframe(self, text=t("ui.extractor.options_title"))
         options_frame.pack(fill=tk.X, pady=5)
         
         # Spine 降级选项
-        spine_downgrade_frame = ttkbootstrap.Frame(options_frame)
+        spine_downgrade_frame = tb.Frame(options_frame)
         spine_downgrade_frame.pack(fill=tk.X, pady=5)
         
         atlas_downgrade_check = UIComponents.create_checkbutton(
@@ -47,7 +47,7 @@ class AssetExtractorTab(TabFrame):
         atlas_downgrade_check.pack(side=tk.LEFT, padx=10)
         
         # Spine 降级版本输入框
-        spine_version_label = ttkbootstrap.Label(spine_downgrade_frame, text=t("ui.label.downgrade_target_version"))
+        spine_version_label = tb.Label(spine_downgrade_frame, text=t("ui.label.downgrade_target_version"))
         spine_version_label.pack(side=tk.LEFT, padx=5)
         
         self.spine_downgrade_version_entry = UIComponents.create_textbox_entry(
@@ -58,12 +58,12 @@ class AssetExtractorTab(TabFrame):
         self.spine_downgrade_version_entry.pack(side=tk.LEFT)
         
         # 操作按钮
-        action_frame = tk.Frame(self)
+        action_frame = tb.Frame(self)
         action_frame.pack(fill=tk.X, pady=10)
         action_frame.grid_columnconfigure(0, weight=1)
 
         run_button = UIComponents.create_button(action_frame, t("action.extract"), self.run_extraction_thread,
-                                                 bg_color=Theme.BUTTON_SUCCESS_BG, padx=15, pady=8)
+                                                 bootstyle="success", style="large")
         run_button.grid(row=0, column=0, sticky="ew", padx=(0, 0), pady=10)
 
     def drop_bundle(self, event):

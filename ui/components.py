@@ -1,8 +1,7 @@
 # ui/components.py
 
 import tkinter as tk
-import tkinter.ttk as ttk
-import ttkbootstrap
+import ttkbootstrap as tb
 from tkinterdnd2 import DND_FILES
 from pathlib import Path
 from typing import Callable, Any
@@ -11,7 +10,7 @@ from i18n import t
 
 # --- 日志管理类 ---
 class Logger:
-    def __init__(self, master, log_widget: tk.Text, status_widget: tk.Label):
+    def __init__(self, master, log_widget: tb.Text, status_widget: tb.Label):
         self.master = master
         self.log_widget = log_widget
         self.status_widget = status_widget
@@ -90,13 +89,17 @@ class Theme:
     SIDEBAR_BUTTON_ACTIVE_FG = '#ffffff'
 
     # 字体
-    FRAME_FONT = ("Microsoft YaHei", 11, "bold")
     DROP_ZONE_FONT = ("Microsoft YaHei", 9)
     INPUT_FONT = ("Microsoft YaHei", 9)
     STATUS_BAR_FONT = ("Microsoft YaHei", 9)
-    BUTTON_FONT = ("Microsoft YaHei", 10, "bold")
-    SIDEBAR_FONT = ("Microsoft YaHei", 9, "bold")
-    LOG_FONT = ("SimSun", 9)
+    BUTTON_FONT = ("Segoe UI", 10, "bold")
+    SIDEBAR_FONT = ("Segoe UI", 9)
+    LOG_FONT = ("Consolas", 9)
+    TOOLTIP_FONT = ("Microsoft YaHei", 9)
+    
+    # Tooltip 颜色
+    TOOLTIP_BG = '#ffffe0'
+    TOOLTIP_FG = '#080808'
 
 
 # --- UI 组件工厂 ---
@@ -107,7 +110,7 @@ class UIComponents:
     @staticmethod
     def create_textbox_entry(parent, textvariable, width=None, placeholder_text=None, readonly=False):
         """创建统一的文本输入框组件"""
-        entry = ttkbootstrap.Entry(
+        entry = tb.Entry(
             parent,
             textvariable=textvariable,
             width=width
@@ -137,73 +140,43 @@ class UIComponents:
         return entry
 
     @staticmethod
-    def create_button(parent, text, command, bg_color=None, width=None, state=None, style=None, **kwargs):
+    def create_button(parent, text, command, bootstyle="primary", width=None, state=None, padding=None, style=None, **kwargs):
         """
         创建统一的按钮组件
-        
+
         Args:
             parent: 父组件
             text: 按钮文本
             command: 按钮命令
-            bg_color: 按钮背景色，直接使用Theme下的颜色，如Theme.BUTTON_PRIMARY_BG
+            bootstyle: ttkbootstrap 样式，可选值: "primary", "success", "warning", "danger", "info", "light-outline" 等
             width: 按钮宽度
-            state: 按钮状态，可选值: "normal", "disabled", "active"
-            style: 按钮样式预设，可选值: "compact"（紧凑型，用于浏览文件按钮）
-            **kwargs: 其他ttkbootstrap.Button参数
-            
+            state: 按钮状态，可选值: "normal", "disabled"
+            padding: 内边距，默认 (10, 5)
+            style: 按钮样式预设，可选值: "compact"（紧凑型，使用较少边距）
+            **kwargs: 其他 tb.Button 参数
+
         Returns:
             创建的按钮组件
         """
-        # 设置默认参数
         button_kwargs = {
             "command": command,
             "width": width,
             "state": state,
-            "padding": (10, 5)
+            "bootstyle": bootstyle,
         }
-        
-        # 根据样式预设调整参数
+
         if style == "compact":
-            # 紧凑型样式，用于浏览文件按钮和路径选择按钮
             button_kwargs["padding"] = (2, 2)
         elif style == "short":
-            button_kwargs["padding"] = (10, 2)
-        
-        # 根据背景色设置bootstyle
-        if bg_color == Theme.BUTTON_SUCCESS_BG:
-            button_kwargs["bootstyle"] = "success"
-        elif bg_color == Theme.BUTTON_WARNING_BG:
-            button_kwargs["bootstyle"] = "warning"
-        elif bg_color == Theme.BUTTON_DANGER_BG:
-            button_kwargs["bootstyle"] = "danger"
-        elif bg_color == Theme.BUTTON_SECONDARY_BG:
-            button_kwargs["bootstyle"] = "info"
-        elif bg_color == Theme.BUTTON_ACCENT_BG:
-            button_kwargs["bootstyle"] = "primary"
+            button_kwargs["padding"] = (10, 3)
+        elif style == "large":
+            button_kwargs["padding"] = (15, 6)
         else:
-            button_kwargs["bootstyle"] = "primary"  # 默认样式
-        
-        # 处理padx和pady参数，转换为ttk的padding格式
-        padx = kwargs.pop('padx', None)
-        pady = kwargs.pop('pady', None)
-        
-        # 如果提供了padx或pady，更新padding
-        if padx is not None or pady is not None:
-            current_padding = button_kwargs.get('padding', (10, 5))
-            new_padx = padx if padx is not None else current_padding[0]
-            new_pady = pady if pady is not None else current_padding[1]
-            button_kwargs['padding'] = (new_padx, new_pady)
-        
-        # 过滤掉ttkbootstrap.Button不支持的选项
-        unsupported_options = ['wraplength', 'justify', 'bg', 'fg', 'selectcolor', 'relief', 'font']
-        for option in unsupported_options:
-            kwargs.pop(option, None)
-        
-        # 合并用户提供的参数
+            button_kwargs["padding"] = padding if padding is not None else (10, 5)
+
         button_kwargs.update(kwargs)
-        
-        # 创建并返回按钮
-        return ttkbootstrap.Button(parent, text=text, **button_kwargs)
+
+        return tb.Button(parent, text=text, **button_kwargs)
 
     @staticmethod
     def create_checkbutton(parent, text, variable, command=None):
@@ -216,7 +189,7 @@ class UIComponents:
             command: 命令回调
             form_row: 是否作为表单行使用（True时不显示文本，文本由外部Label显示）
         """
-        checkbutton = ttkbootstrap.Checkbutton(
+        checkbutton = tb.Checkbutton(
             parent, 
             text=text, 
             variable=variable,
@@ -253,14 +226,14 @@ class UIComponents:
             search_path_var: (可选) 搜索路径变量
             clear_cmd: (可选) 清除按钮回调。点击清除按钮时，UI会自动恢复初始状态，并调用此函数清理外部变量。
         """
-        frame = ttk.Labelframe(parent, text=title, padding=(15, 12))
+        frame = tb.Labelframe(parent, text=title, padding=(15, 12))
         frame.pack(fill=tk.X, pady=(0, 5))
 
         # 如果提供了 search_path_var，则在拖放区上方添加查找路径输入框
         if search_path_var is not None:
-            search_frame = ttk.Frame(frame)
+            search_frame = tb.Frame(frame)
             search_frame.pack(fill=tk.X, pady=(0, 8))
-            ttk.Label(search_frame, text=t("ui.label.search_path")).pack(side=tk.LEFT, padx=(0,5))
+            tb.Label(search_frame, text=t("ui.label.search_path")).pack(side=tk.LEFT, padx=(0,5))
             UIComponents.create_textbox_entry(
                 search_frame, 
                 textvariable=search_path_var,
@@ -269,29 +242,29 @@ class UIComponents:
             ).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         # 创建显示区域 Label
-        drop_zone = ttkbootstrap.Label(frame, text=label_text, relief="groove", anchor="center", justify="center", padding=10, font=Theme.DROP_ZONE_FONT, bootstyle="inverse-light")
+        drop_zone = tb.Label(frame, text=label_text, relief="sunken", anchor="center", justify="center", padding=10, font=Theme.DROP_ZONE_FONT, bootstyle="inverse-light")
         drop_zone.pack(fill=tk.X, pady=(0, 8))
         drop_zone.drop_target_register(DND_FILES)
         drop_zone.dnd_bind('<<Drop>>', drop_cmd)
         drop_zone.bind('<Configure>', UIComponents._debounce_wraplength)
 
         # 按钮容器 (用于并排显示浏览和清除按钮)
-        btn_frame = ttk.Frame(frame)
+        btn_frame = tb.Frame(frame)
         btn_frame.pack(anchor=tk.CENTER)
 
         # 浏览按钮
-        UIComponents.create_button(btn_frame, button_text, browse_cmd, bg_color=Theme.BUTTON_PRIMARY_BG, style="compact").pack(side=tk.LEFT, padx=(0, 5))
+        UIComponents.create_button(btn_frame, button_text, browse_cmd, bootstyle="primary", style="short").pack(side=tk.LEFT, padx=(0, 5))
 
         # 清除逻辑
         def _handle_clear():
             # 1. 恢复 UI 至初始状态 (文本、背景、字体颜色)
-            drop_zone.config(text=label_text)
+            drop_zone.config(text=label_text, bootstyle="inverse-light")
             # 2. 调用外部清理逻辑 (如果存在)
             if clear_cmd:
                 clear_cmd()
 
         # 清除按钮
-        UIComponents.create_button(btn_frame, t("action.clear"), _handle_clear, bg_color=Theme.BUTTON_WARNING_BG, style="compact").pack(side=tk.LEFT)
+        UIComponents.create_button(btn_frame, t("action.clear"), _handle_clear, bootstyle="warning", style="short").pack(side=tk.LEFT)
 
         return frame, drop_zone
 
@@ -318,7 +291,7 @@ class UIComponents:
         )
 
     @staticmethod
-    def create_path_entry(parent, title, textvariable, select_cmd, open_cmd=None, placeholder_text=None, open_button=True, form_row=False):
+    def create_path_entry(parent, title, textvariable, select_cmd, open_cmd=None, placeholder_text=None, open_button=True):
         """
         创建路径输入框组件
 
@@ -330,25 +303,22 @@ class UIComponents:
             open_cmd: 打开按钮命令（可选）
             placeholder_text: 占位符文本（可选）
             open_button: 是否显示"开"按钮，默认为True
-            form_row: 是否作为表单行使用（True时返回Frame供手动布局，False时返回LabelFrame并自动pack）
 
         Returns:
             创建的框架组件
         """
-        if form_row:
-            frame = ttk.Frame(parent)
-        else:
-            frame = ttkbootstrap.LabelFrame(parent, text=title, padx=8, pady=8)
-            frame.pack(fill=tk.X, pady=5)
+
+        frame = tb.Labelframe(parent, text=title, padding=8)
+        frame.pack(fill=tk.X, pady=5)
 
         entry = UIComponents.create_textbox_entry(frame, textvariable, placeholder_text=placeholder_text)
-        entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5), ipady=3)
+        entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
 
-        select_btn = UIComponents.create_button(frame, t("action.select_short"), select_cmd, bg_color=Theme.BUTTON_PRIMARY_BG, style="compact")
+        select_btn = UIComponents.create_button(frame, t("action.select_short"), select_cmd, bootstyle="primary", style="compact")
         select_btn.pack(side=tk.LEFT, padx=(0, 5))
-        
+
         if open_button and open_cmd is not None:
-            open_btn = UIComponents.create_button(frame, t("action.open_short"), open_cmd, bg_color=Theme.BUTTON_SECONDARY_BG, style="compact")
+            open_btn = UIComponents.create_button(frame, t("action.open_short"), open_cmd, bootstyle="info", style="compact")
             open_btn.pack(side=tk.LEFT)
 
         return frame
@@ -399,7 +369,7 @@ class UIComponents:
         # 合并其他参数
         combo_kwargs.update(kwargs)
         
-        combobox = ttk.Combobox(parent, **combo_kwargs)
+        combobox = tb.Combobox(parent, **combo_kwargs)
         
         # 阻止鼠标滚轮事件,避免滚动时改变选项
         combobox.bind("<MouseWheel>", lambda e: "break")
@@ -407,23 +377,15 @@ class UIComponents:
         return combobox
 
     @staticmethod
-    def create_tooltip_icon(parent, text: str) -> tk.Label:
+    def create_tooltip_icon(parent, text: str) -> tb.Label:
         """
         创建一个带有'ⓘ'符号的Label,鼠标悬停时显示Tooltip
-        
-        Args:
-            parent: 父组件
-            text: 提示文本
-            
-        Returns:
-            创建的Label组件
         """
-        label = tk.Label(
+        label = tb.Label(
             parent,
             text="ⓘ",
-            fg=Theme.BUTTON_PRIMARY_BG,
-            bg=Theme.FRAME_BG,
-            font=("Microsoft YaHei", 10, "bold"),
+            font=Theme.TOOLTIP_FONT,
+            style="info",
             cursor="question_arrow"
         )
         Tooltip(label, text)
@@ -434,20 +396,20 @@ class SettingRow:
     """设置行组件工厂，用于创建统一风格的设置项"""
 
     @staticmethod
-    def create_container(parent: tk.Widget) -> ttkbootstrap.Frame:
+    def create_container(parent: tk.Widget) -> tb.Frame:
         """创建标准的行容器，带有底部间距"""
-        frame = ttkbootstrap.Frame(parent)
+        frame = tb.Frame(parent)
         frame.pack(fill=tk.X, padx=5, pady=5)  # 垂直间距，让每一行呼吸感更强
         return frame
 
     @staticmethod
-    def _add_label_area(parent: ttkbootstrap.Frame, text: str, tooltip_text: str | None) -> None:
+    def _add_label_area(parent: tb.Frame, text: str, tooltip_text: str | None) -> None:
         """私有辅助：添加左侧标签和提示图标"""
         # 使用 Frame 包裹 Label 和 Tooltip，确保它们靠左紧挨
-        left_frame = ttkbootstrap.Frame(parent)
+        left_frame = tb.Frame(parent)
         left_frame.pack(side=tk.LEFT, anchor="w")
         
-        lbl = ttkbootstrap.Label(left_frame, text=text, font=Theme.INPUT_FONT)
+        lbl = tb.Label(left_frame, text=text)
         lbl.pack(side=tk.LEFT)
         
         if tooltip_text:
@@ -462,18 +424,18 @@ class SettingRow:
         variable: tk.BooleanVar,
         tooltip: str | None = None,
         command: Callable[[], Any] | None = None
-    ) -> ttkbootstrap.Checkbutton:
+    ) -> tb.Checkbutton:
         """创建开关行"""
         container = SettingRow.create_container(parent)
         SettingRow._add_label_area(container, label, tooltip)
         
         # 核心改变：使用 success-round-toggle 样式
         # side=RIGHT 确保开关始终在最右侧
-        chk = ttkbootstrap.Checkbutton(
+        chk = tb.Checkbutton(
             container,
             variable=variable,
             command=command,
-            style="success.Round.Toggle",  # ttkbootstrap 特有样式
+            style="success-square-toggle",
             text=""  # 开关本身不需要文字，文字在左侧 Label
         )
         chk.pack(side=tk.RIGHT)
@@ -487,23 +449,25 @@ class SettingRow:
         select_cmd: Callable[[], None],
         open_cmd: Callable[[], None] | None = None,
         tooltip: str | None = None
-    ) -> ttkbootstrap.Frame:
+    ) -> tb.Frame:
         """创建路径选择行"""
         container = SettingRow.create_container(parent)
         SettingRow._add_label_area(container, label, tooltip)
         
         # 右侧区域容器
-        right_frame = ttkbootstrap.Frame(container)
+        right_frame = tb.Frame(container)
         right_frame.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(10, 0))
         
         # 按钮在最右
         if open_cmd:
-            ttkbootstrap.Button(right_frame, text=t("action.open_short"), command=open_cmd, style="info-outline").pack(side=tk.RIGHT, padx=(5,0))
+            UIComponents.create_button(right_frame, t("action.open_short"), open_cmd, bootstyle="info", style="compact"
+            ).pack(side=tk.RIGHT, padx=(5,0))
             
-        ttkbootstrap.Button(right_frame, text=t("action.select_short"), command=select_cmd, style="primary").pack(side=tk.RIGHT, padx=(5,0))
+        UIComponents.create_button(right_frame, t("action.select_short"), select_cmd, bootstyle="primary", style="compact"
+        ).pack(side=tk.RIGHT, padx=(5,0))
         
         # 输入框填充剩余中间区域
-        entry = ttkbootstrap.Entry(right_frame, textvariable=path_var)
+        entry = tb.Entry(right_frame, textvariable=path_var)
         entry.pack(side=tk.RIGHT, fill=tk.X, expand=True)
         
         return container
@@ -515,12 +479,12 @@ class SettingRow:
         text_var: tk.StringVar,
         tooltip: str | None = None,
         placeholder_text: str | None = None
-    ) -> ttkbootstrap.Entry:
+    ) -> tb.Entry:
         """创建输入行"""
         container = SettingRow.create_container(parent)
         SettingRow._add_label_area(container, label, tooltip)
         
-        entry = ttkbootstrap.Entry(container, textvariable=text_var)
+        entry = tb.Entry(container, textvariable=text_var)
         # 使用传统方式实现占位符功能
         if placeholder_text:
             # 初始显示占位符
@@ -548,14 +512,63 @@ class SettingRow:
         text_var: tk.StringVar,
         values: list[str],
         tooltip: str | None = None
-    ) -> ttkbootstrap.Combobox:
+    ) -> tb.Combobox:
         """创建下拉框行"""
         container = SettingRow.create_container(parent)
         SettingRow._add_label_area(container, label, tooltip)
         
-        combobox = ttkbootstrap.Combobox(container, textvariable=text_var, values=values, width=10)
+        combobox = tb.Combobox(container, textvariable=text_var, values=values, width=10)
         combobox.pack(side=tk.RIGHT, padx=(10, 0))
         return combobox
+
+    @staticmethod
+    def create_radiobutton_row(
+        parent: tk.Widget,
+        label: str,
+        text_var: tk.StringVar,
+        values: list[str] | list[tuple[str, str]],
+        tooltip: str | None = None
+    ) -> tb.Frame:
+        """创建单选按钮行"""
+        container = SettingRow.create_container(parent)
+        SettingRow._add_label_area(container, label, tooltip)
+        
+        right_frame = tb.Frame(container)
+        right_frame.pack(side=tk.RIGHT)
+        
+        for value in values:
+            if isinstance(value, tuple):
+                value, text = value
+            else:
+                text = value
+            
+            tb.Radiobutton(
+                right_frame,
+                text=text,
+                variable=text_var,
+                value=value,
+                bootstyle="outline-toolbutton"
+            ).pack(side=tk.LEFT, padx=3)
+        
+        return container
+
+    @staticmethod
+    def create_button_row(
+        parent: tk.Widget,
+        label: str,
+        button_text: str,
+        command: Callable[[], None],
+        tooltip: str | None = None,
+        bootstyle: str = "info"
+    ) -> tb.Frame:
+        """创建按钮行"""
+        container = SettingRow.create_container(parent)
+        SettingRow._add_label_area(container, label, tooltip)
+        
+        button = UIComponents.create_button(container, button_text, command, bootstyle=bootstyle, style="compact")
+        button.pack(side=tk.RIGHT)
+        
+        return container
 
 
 class ModeSwitcher:
@@ -578,19 +591,19 @@ class ModeSwitcher:
 
         self.frame = self._create_widgets()
 
-    def _create_widgets(self) -> tk.Frame:
+    def _create_widgets(self) -> tb.Frame:
         """创建组件UI"""
-        frame = ttkbootstrap.Frame(self.parent)
+        frame = tb.Frame(self.parent)
         frame.pack(fill=tk.X, pady=(0, 10))
 
         for value, text in self.options:
-            ttkbootstrap.Radiobutton(
+            tb.Radiobutton(
                 frame, text=text,
                 variable=self.mode_var,
                 value=value,
                 command=self._on_mode_change,
                 style="outline-toolbutton"
-            ).pack(side=tk.LEFT, fill=tk.X, expand=True)
+            ).pack(side=tk.LEFT, fill=tk.X, padx=2, expand=True)
 
         return frame
 
@@ -599,7 +612,7 @@ class ModeSwitcher:
         if self.command:
             self.command()
 
-    def get_frame(self) -> tk.Frame:
+    def get_frame(self) -> tb.Frame:
         """获取组件框架"""
         return self.frame
 
@@ -637,7 +650,7 @@ class FileListbox:
     def _create_widgets(self, title):
         """创建组件UI"""
         # 创建框架
-        self.frame = ttk.Labelframe(
+        self.frame = tb.Labelframe(
             self.parent, 
             text=title, 
             padding=(15, 12)
@@ -645,7 +658,7 @@ class FileListbox:
         self.frame.columnconfigure(0, weight=1)
         
         # 创建列表框区域
-        list_frame = tk.Frame(self.frame, bg=Theme.FRAME_BG)
+        list_frame = tb.Frame(self.frame)
         list_frame.grid(row=0, column=0, sticky="nsew", pady=(0, 10))
         self.frame.rowconfigure(0, weight=1)
         list_frame.columnconfigure(0, weight=1)
@@ -656,13 +669,14 @@ class FileListbox:
             font=Theme.INPUT_FONT, 
             bg=Theme.INPUT_BG, 
             fg=Theme.TEXT_NORMAL, 
-            selectmode=tk.EXTENDED, 
+            selectmode=tk.EXTENDED,
+            relief=tk.SUNKEN,
             height=self.height
         )
         
         # 创建滚动条
-        v_scrollbar = tk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.listbox.yview)
-        h_scrollbar = tk.Scrollbar(list_frame, orient=tk.HORIZONTAL, command=self.listbox.xview)
+        v_scrollbar = tb.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.listbox.yview)
+        h_scrollbar = tb.Scrollbar(list_frame, orient=tk.HORIZONTAL, command=self.listbox.xview)
         self.listbox.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
         
         # 布局
@@ -679,40 +693,40 @@ class FileListbox:
         self._add_placeholder()
         
         # 创建按钮区域
-        button_frame = tk.Frame(self.frame, bg=Theme.FRAME_BG)
+        button_frame = tb.Frame(self.frame)
         button_frame.grid(row=1, column=0, sticky="ew")
         button_frame.columnconfigure((0, 1, 2, 3), weight=1)
         
         # 创建按钮
         UIComponents.create_button(
-            button_frame, 
-            t("action.add_files"), 
-            self._browse_add_files, 
-            bg_color=Theme.BUTTON_PRIMARY_BG,
+            button_frame,
+            t("action.add_files"),
+            self._browse_add_files,
+            bootstyle="primary",
             style="compact"
         ).grid(row=0, column=0, sticky="ew", padx=(0, 5))
-        
+
         UIComponents.create_button(
-            button_frame, 
-            t("action.add_folder"), 
-            self._browse_add_folder, 
-            bg_color=Theme.BUTTON_PRIMARY_BG,
+            button_frame,
+            t("action.add_folder"),
+            self._browse_add_folder,
+            bootstyle="primary",
             style="compact"
         ).grid(row=0, column=1, sticky="ew", padx=5)
-        
+
         UIComponents.create_button(
-            button_frame, 
-            t("action.remove_selected"), 
-            self._remove_selected, 
-            bg_color=Theme.BUTTON_WARNING_BG,
+            button_frame,
+            t("action.remove_selected"),
+            self._remove_selected,
+            bootstyle="warning",
             style="compact"
         ).grid(row=0, column=2, sticky="ew", padx=5)
-        
+
         UIComponents.create_button(
-            button_frame, 
-            t("action.clear_list"), 
-            self._clear_list, 
-            bg_color=Theme.BUTTON_DANGER_BG,
+            button_frame,
+            t("action.clear_list"),
+            self._clear_list,
+            bootstyle="danger",
             style="compact"
         ).grid(row=0, column=3, sticky="ew", padx=(5, 0))
     
@@ -932,79 +946,15 @@ class Tooltip:
         self.tip_window.wm_overrideredirect(True)
         self.tip_window.wm_geometry(f"+{x}+{y}")
         
-        label = tk.Label(
+        label = tb.Label(
             self.tip_window,
             text=self.text,
             justify=tk.LEFT,
-            background="#ffffe0",
+            background=Theme.TOOLTIP_BG,
+            foreground=Theme.TOOLTIP_FG,
             relief=tk.SOLID,
             borderwidth=1,
-            font=("Microsoft YaHei", 9),
-            padx=5,
-            pady=3
+            font=Theme.TOOLTIP_FONT,
+            padding=(5, 3)
         )
         label.pack(ipadx=1)
-
-
-class ScrollableFrame(tk.Frame):
-    """可滚动的Frame容器,支持鼠标滚轮"""
-    
-    def __init__(self, parent, *args, **kwargs):
-        """
-        初始化可滚动Frame
-        
-        Args:
-            parent: 父控件
-            *args: Frame位置参数
-            **kwargs: Frame关键字参数
-        """
-        super().__init__(parent, *args, **kwargs)
-        
-        self.canvas = tk.Canvas(self, bg=Theme.WINDOW_BG, highlightthickness=0)
-        self.scrollbar = tk.Scrollbar(self, orient=tk.VERTICAL, command=self.canvas.yview)
-        self.viewport = tk.Frame(self.canvas, bg=Theme.WINDOW_BG)
-        
-        self.viewport.bind(
-            "<Configure>",
-            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        )
-        
-        self.canvas.create_window((0, 0), window=self.viewport, anchor="nw", width=self.canvas.winfo_width())
-        self.canvas.configure(yscrollcommand=self.scrollbar.set)
-        
-        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        self._bind_mouse_wheel()
-        self._bind_resize_event()
-    
-    def _bind_resize_event(self):
-        """绑定窗口大小变化事件,使内容宽度自适应"""
-        self.canvas.bind("<Configure>", self._on_canvas_resize)
-    
-    def _on_canvas_resize(self, event):
-        """Canvas大小变化时调整内容窗口宽度"""
-        self.canvas.itemconfig(self.canvas.find_withtag("all")[0], width=event.width)
-    
-    def _bind_mouse_wheel(self) -> None:
-        """绑定鼠标进入/离开事件,实现滚轮焦点切换"""
-        self.bind('<Enter>', self._on_mouse_enter)
-        self.bind('<Leave>', self._on_mouse_leave)
-
-    def _on_mouse_enter(self, event: tk.Event) -> None:
-        """鼠标进入区域,绑定全局滚轮事件"""
-        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
-
-    def _on_mouse_leave(self, event: tk.Event) -> None:
-        """鼠标离开区域,解绑全局滚轮事件"""
-        self.canvas.unbind_all("<MouseWheel>")
-
-    def _on_mousewheel(self, event: tk.Event) -> None:
-        """处理鼠标滚轮事件"""
-        self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-
-    def destroy(self) -> None:
-        """销毁时清理绑定"""
-        self.canvas.unbind_all("<MouseWheel>")
-        self.canvas.unbind("<Configure>")
-        super().destroy()

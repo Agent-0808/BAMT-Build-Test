@@ -1,10 +1,10 @@
 # ui/app.py
 
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import messagebox
+import ttkbootstrap as tb
 from pathlib import Path
-from ttkbootstrap.scrolled import ScrolledText 
-import ttkbootstrap.constants
+from ttkbootstrap.widgets.scrolled import ScrolledText 
 
 from utils import get_environment_info
 from ui.components import Theme, Logger, UIComponents
@@ -28,7 +28,6 @@ class App(tk.Frame):
     def setup_main_window(self):
         self.master.title(t("ui.app_title"))
         self.master.geometry("600x789")
-        self.master.configure(bg=Theme.WINDOW_BG)
 
     def _set_default_values(self):
         """设置所有共享变量的默认值。"""
@@ -62,6 +61,9 @@ class App(tk.Frame):
         self.enable_atlas_downgrade_var.set(False)
         self.atlas_downgrade_path_var.set("")
         self.spine_downgrade_version_var.set("3.8.75")  # 设置默认值
+        
+        # Asset Packer 选项
+        self.enable_spine38_namefix_var.set(False)
 
     def init_shared_variables(self):
         """初始化所有Tabs共享的变量。"""
@@ -107,7 +109,7 @@ class App(tk.Frame):
         self.master.grid_columnconfigure(0, weight=1)  # 主内容区域可扩展
         
         # 创建主内容框架
-        main_frame = ttkbootstrap.Frame(self.master)
+        main_frame = tb.Frame(self.master)
         main_frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
         
         # 主内容框架也使用grid布局
@@ -115,38 +117,22 @@ class App(tk.Frame):
         main_frame.grid_columnconfigure(0, weight=1)
         
         # 使用可拖动的 PanedWindow 作为主内容区域
-        paned_window = ttk.PanedWindow(main_frame, orient="vertical", bootstyle="secondary")
+        paned_window = tb.Panedwindow(main_frame, orient="vertical", bootstyle="secondary")
         paned_window.grid(row=1, column=0, sticky="nsew")
 
         # 上方控制面板
-        top_frame = ttkbootstrap.Frame(paned_window)
+        top_frame = tb.Frame(paned_window)
         paned_window.add(top_frame, weight=1)
 
         # 下方日志区域
-        log_panel_frame = ttkbootstrap.Frame(paned_window)
+        log_panel_frame = tb.Frame(paned_window)
         paned_window.add(log_panel_frame, weight=0)
-
-        # 顶部框架，用于放置设置按钮
-        header_buttons_frame = ttkbootstrap.Frame(top_frame)
-        header_buttons_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        # 使用grid布局让按钮横向拉伸填满
-        settings_button = UIComponents.create_button(header_buttons_frame, t("ui.settings.title"), self.open_settings_dialog, bg_color=Theme.BUTTON_WARNING_BG)
-        settings_button.grid(row=0, column=0, sticky="ew", padx=(0, 5))
-        
-        environment_button = UIComponents.create_button(header_buttons_frame, t("action.environment"), self.show_environment_info, bg_color=Theme.BUTTON_SECONDARY_BG)
-        environment_button.grid(row=0, column=1, sticky="ew")
-        
-        # 设置列权重，让按钮均匀拉伸
-        header_buttons_frame.columnconfigure(0, weight=1)
-        header_buttons_frame.columnconfigure(1, weight=1)
-        header_buttons_frame.rowconfigure(0, weight=1)  # 确保按钮垂直居中
 
         # 创建日志区域（需要在侧边栏之前创建，因为侧边栏会创建Tab，Tab需要logger）
         self.log_text = self.create_log_area(log_panel_frame)
 
         # 底部状态栏 - 固定在窗口底部
-        self.status_label = ttkbootstrap.Label(self.master, relief=tk.SUNKEN, padding=(5,0),
+        self.status_label = tb.Label(self.master, relief=tk.SUNKEN, padding=(5,0),
                                      font=Theme.STATUS_BAR_FONT, bootstyle="inverse-bg")
         self.status_label.grid(row=1, column=0, sticky="ew", padx=0, pady=0)  # 使用grid固定在底部，无边距
         
@@ -226,13 +212,13 @@ class App(tk.Frame):
         # 清空父容器的布局配置
         parent.pack_propagate(False)
         
-        # 左侧侧边栏 - 使用ttk.Frame并设置bootstyle="dark"实现深色背景
-        self.sidebar_frame = ttk.Frame(parent, bootstyle="dark", width=120)
+        # 左侧侧边栏 - 使用Frame并设置bootstyle="dark"实现深色背景
+        self.sidebar_frame = tb.Frame(parent, bootstyle="dark", width=140)
         self.sidebar_frame.pack(side=tk.LEFT, fill=tk.Y)
         self.sidebar_frame.pack_propagate(False)  # 固定宽度
         
         # 右侧内容区域
-        self.content_frame = tk.Frame(parent, bg=Theme.WINDOW_BG)
+        self.content_frame = tb.Frame(parent)
         self.content_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         self.content_frame.pack_propagate(False)
         
@@ -277,12 +263,25 @@ class App(tk.Frame):
                 self.sidebar_frame,
                 text=title,
                 command=lambda t=tab: self.show_tab(t),
-                # 初始样式设为 secondary 或 light-outline，使其在深色背景上可见
-                bootstyle="light-outline" 
+                bootstyle="light-outline",
+                padding=(0, 5)
             )
             # 增加 ipadx/ipady 让按钮看起来更饱满
-            btn.pack(fill=tk.X, padx=5, pady=2) 
+            btn.pack(fill=tk.X, padx=5, pady=(5,0)) 
             self.tab_buttons.append((btn, tab))
+        
+        # 添加分隔线
+        separator = tb.Frame(self.sidebar_frame, height=2, bootstyle="secondary")
+        separator.pack(fill=tk.X, padx=5, pady=(10,5))
+        
+        # 在底部添加设置按钮
+        settings_btn = UIComponents.create_button(
+            self.sidebar_frame,
+            text=t("ui.settings.title"),
+            command=self.open_settings_dialog,
+            bootstyle="info"
+        )
+        settings_btn.pack(fill=tk.X, padx=5, pady=(5,0))
     
     def show_tab(self, tab_to_show):
         """显示指定的Tab页面"""
@@ -309,18 +308,18 @@ class App(tk.Frame):
         创建日志区域，使用自定义的深色风格
         """
         # 创建外层容器（带标题的边框）
-        log_frame = ttk.Labelframe(
+        log_frame = tb.Labelframe(
             parent, 
             text=t("ui.log_area"), 
             bootstyle="default",
-            padding=2
+            padding=(5, 0)
         )
-        log_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=0)
+        log_frame.pack(fill=tk.BOTH, expand=True)
 
         # 使用 ttkbootstrap 的 ScrolledText (带自动隐藏的滚动条)
         st = ScrolledText(
             log_frame,
-            padding=5,
+            padding=0,
             height=8,
             autohide=True,            # 自动隐藏滚动条
             bootstyle="round" # 滚动条样式
@@ -332,9 +331,10 @@ class App(tk.Frame):
             font=Theme.LOG_FONT,
             background=Theme.LOG_BG,
             foreground=Theme.LOG_FG,
-            selectbackground="#3a5a7a",      # 选中时的背景色
-            insertbackground=Theme.LOG_FG,        # 光标颜色
-            state=tk.DISABLED                # 初始设为不可编辑
+            selectbackground="#3a5a7a",     # 选中时的背景色
+            insertbackground=Theme.LOG_FG,  # 光标颜色
+            state=tk.DISABLED,              # 初始设为不可编辑
+            spacing1=2,                     # 段前间距（像素）
         )
 
         # 保存引用以防被垃圾回收（虽然在 pack 后通常不需要）

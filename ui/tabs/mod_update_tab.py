@@ -1,8 +1,8 @@
 # ui/tabs/mod_update_tab.py
 
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
-from tkinterdnd2 import DND_FILES
+import ttkbootstrap as tb
+from tkinter import messagebox
 from pathlib import Path
 
 from i18n import t
@@ -37,8 +37,8 @@ class ModUpdateTab(TabFrame):
         )
 
         # --- 容器框架 ---
-        self.single_frame = tk.Frame(self, bg=Theme.WINDOW_BG)
-        self.batch_frame = tk.Frame(self, bg=Theme.WINDOW_BG)
+        self.single_frame = tb.Frame(self)
+        self.batch_frame = tb.Frame(self)
         
         # 创建两种模式的UI
         self._create_single_mode_widgets(self.single_frame)
@@ -74,14 +74,14 @@ class ModUpdateTab(TabFrame):
         )
 
         # 操作按钮区域
-        action_button_frame = tk.Frame(parent)
+        action_button_frame = tb.Frame(parent)
         action_button_frame.pack(fill=tk.X, pady=10)
         action_button_frame.grid_columnconfigure((0, 1), weight=1)
 
-        self.run_button = UIComponents.create_button(action_button_frame, t("action.update"), self.run_update_thread, bg_color=Theme.BUTTON_SUCCESS_BG, padx=15, pady=8)
+        self.run_button = UIComponents.create_button(action_button_frame, t("action.update"), self.run_update_thread, bootstyle="success", style="large")
         self.run_button.grid(row=0, column=0, sticky="ew", padx=(0, 5), pady=2)
         
-        self.replace_button = UIComponents.create_button(action_button_frame, t("action.replace_original"), self.replace_original_thread, bg_color=Theme.BUTTON_DANGER_BG, padx=15, pady=8, state="disabled")
+        self.replace_button = UIComponents.create_button(action_button_frame, t("action.replace_original"), self.replace_original_thread, bootstyle="danger", state="disabled", style="large")
         self.replace_button.grid(row=0, column=1, sticky="ew", padx=(5, 0), pady=2)
 
     def drop_old_mod(self, event):
@@ -248,7 +248,7 @@ class ModUpdateTab(TabFrame):
             )
             self.batch_file_listbox.get_frame().pack(fill=tk.BOTH, expand=True, pady=(0, 10))
             
-            run_button = UIComponents.create_button(parent, text=t("action.start"), command=self.run_batch_update_thread, font=Theme.BUTTON_FONT, bg_color=Theme.BUTTON_SUCCESS_BG, relief=tk.FLAT, padx=15, pady=8)
+            run_button = UIComponents.create_button(parent, text=t("action.start"), command=self.run_batch_update_thread, bootstyle="success", style="large")
             run_button.pack(fill=tk.X, pady=5)
 
     def run_batch_update_thread(self):
