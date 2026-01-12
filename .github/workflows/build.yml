@@ -5,6 +5,13 @@ on:
     tags:
       - 'v*' # Trigger when push tag start with v (etc. v0.1.0)
   workflow_dispatch: # Manual
+  workflow_call: # Allow reuse from other workflows
+    inputs:
+      tag_name:
+        description: 'Tag name for release'
+        required: false
+        type: string
+
   
 permissions:
   contents: write

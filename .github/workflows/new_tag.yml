@@ -54,12 +54,3 @@ jobs:
           echo "Created and pushed tag: $TAG_NAME"
           echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
 
-    outputs:
-      should_build: ${{ steps.check.outputs.should_create }}
-      tag_name: ${{ steps.create_tag.outputs.tag_name }}
-
-  # Trigger build workflow after tag is created
-  build-release:
-    needs: create-tag
-    if: needs.create-tag.outputs.should_build == 'true'
-    uses: ./.github/workflows/build.yml
