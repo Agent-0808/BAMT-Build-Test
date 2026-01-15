@@ -1,18 +1,21 @@
-# main.py
+# main.pyw
 
+from pathlib import Path
 from tkinterdnd2 import TkinterDnD
 import ttkbootstrap as tb
 from ui import App
 
 if __name__ == "__main__":
-    # 先创建 TkinterDnD 窗口
+
     root = TkinterDnD.Tk()
-    # 应用 ttkbootstrap 样式
     tb.Style(theme='cosmo')
     
-    # 创建并运行应用
+    # 设置窗口图标
+    icon_path = Path(__file__).parent / "assets" / "BAMT_128x.ico"
+    if icon_path.exists():
+        root.iconbitmap(str(icon_path))
+
     app = App(root)
     print("BA Modding Toolkit 已启动")
     
-    # 启动 Tkinter 事件循环
     root.mainloop()
