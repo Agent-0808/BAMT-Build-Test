@@ -43,7 +43,7 @@ jobs:
           nuitka-version: main
           script-name: main.pyw
           mode: onefile
-          windows-icon-from-ico: BAMT_128x.ico
+          windows-icon-from-ico: assets/BAMT_128x.ico
 
           low-memory: true
           # 经测试使用mingw64可以避免堆内存问题
