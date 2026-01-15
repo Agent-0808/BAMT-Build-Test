@@ -39,7 +39,7 @@ class App(tk.Frame):
         # 共享变量
         self.output_dir_var.set(str(Path.cwd() / "output"))
         self.enable_padding_var.set(False)
-        self.enable_crc_correction_var.set(True)
+        self.enable_crc_correction_var.set("auto")
         self.create_backup_var.set(True)
         self.compression_method_var.set("lzma")
         
@@ -64,6 +64,7 @@ class App(tk.Frame):
         
         # Asset Packer 选项
         self.enable_spine38_namefix_var.set(False)
+        self.enable_bleed_var.set(False)
 
     def init_shared_variables(self):
         """初始化所有Tabs共享的变量。"""
@@ -72,7 +73,7 @@ class App(tk.Frame):
         self.auto_detect_subdirs_var = tk.BooleanVar()
         self.output_dir_var = tk.StringVar()
         self.enable_padding_var = tk.BooleanVar()
-        self.enable_crc_correction_var = tk.BooleanVar()
+        self.enable_crc_correction_var = tk.StringVar()
         self.create_backup_var = tk.BooleanVar()
         self.compression_method_var = tk.StringVar()
         # JP/GB转换自动搜索选项
@@ -93,8 +94,9 @@ class App(tk.Frame):
         self.atlas_downgrade_path_var = tk.StringVar()
         self.spine_downgrade_version_var = tk.StringVar()  # 添加Spine降级版本变量
         
-        # Spine 3.8 文件名修正选项
+        # Asset Packer Bleed 选项
         self.enable_spine38_namefix_var = tk.BooleanVar()
+        self.enable_bleed_var = tk.BooleanVar()
         
         # 语言设置
         self.language_var = tk.StringVar(value="zh-CN")
@@ -158,7 +160,7 @@ class App(tk.Frame):
     def select_game_resource_directory(self):
         # 根据复选框状态决定对话框标题
         if self.auto_detect_subdirs_var.get():
-            title = t("ui.label.game_root_dir")
+            title = t("option.game_root_dir")
         else:
             title = t("ui.label.custom_resource_dir")
         select_directory(self.game_resource_dir_var, title, self.logger.log)
@@ -167,7 +169,7 @@ class App(tk.Frame):
         open_directory(self.game_resource_dir_var.get(), self.logger.log)
 
     def select_output_directory(self):
-        select_directory(self.output_dir_var, t("ui.label.output_dir"), self.logger.log)
+        select_directory(self.output_dir_var, t("option.output_dir"), self.logger.log)
 
     def open_output_dir_in_explorer(self):
         open_directory(self.output_dir_var.get(), self.logger.log, create_if_not_exist=True)
@@ -277,7 +279,7 @@ class App(tk.Frame):
         # 在底部添加设置按钮
         settings_btn = UIComponents.create_button(
             self.sidebar_frame,
-            text=t("ui.settings.title"),
+            text=t("ui.settings.button_text"),
             command=self.open_settings_dialog,
             bootstyle="info"
         )

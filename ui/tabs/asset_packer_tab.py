@@ -8,7 +8,7 @@ from i18n import t
 
 import processing
 from ui.base_tab import TabFrame
-from ui.components import Theme, UIComponents
+from ui.components import Theme, UIComponents, SettingRow
 from ui.utils import handle_drop, replace_file, select_file, select_directory
 
 class AssetPackerTab(TabFrame):
@@ -32,15 +32,22 @@ class AssetPackerTab(TabFrame):
         )
         
         # 旧版 Spine 文件名修正选项
-        options_frame = tb.Frame(self)
+        options_frame = tb.Labelframe(self, text=t("ui.label.options"), padding=10)
         options_frame.pack(fill=tk.X, pady=(5, 0))
         
-        self.spine38_namefix_checkbutton = UIComponents.create_checkbutton(
+        SettingRow.create_switch(
             options_frame,
-            "修正旧版Spine文件名",
-            self.app.enable_spine38_namefix_var
+            label=t("option.enable_spine38_name_fix"),
+            variable=self.app.enable_spine38_namefix_var,
+            tooltip=t("option.enable_spine38_name_fix_info")
         )
-        self.spine38_namefix_checkbutton.pack(anchor=tk.W)
+        
+        SettingRow.create_switch(
+            options_frame,
+            label=t("option.enable_bleed"),
+            variable=self.app.enable_bleed_var,
+            tooltip=t("option.enable_bleed_info")
+        )
 
         # 操作按钮区域
         action_button_frame = tb.Frame(self)
@@ -104,9 +111,19 @@ class AssetPackerTab(TabFrame):
         self.logger.log(t("log.packer.start_packing"))
         self.logger.status(t("common.processing"))
         
+        crc_setting = self.app.enable_crc_correction_var.get()
+        perform_crc = False
+        
+        if crc_setting == "auto":
+            platform, unity_version = processing.get_unity_platform_info(self.bundle_path)
+            self.logger.log(t("log.platform_info", platform=platform, version=unity_version))
+            perform_crc = platform == "StandaloneWindows64"
+        elif crc_setting == "true":
+            perform_crc = True
+        
         # 创建 SaveOptions 和 SpineOptions 对象
         save_options = processing.SaveOptions(
-            perform_crc=self.app.enable_crc_correction_var.get(),
+            perform_crc=perform_crc,
             enable_padding=self.app.enable_padding_var.get(),
             compression=self.app.compression_method_var.get()
         )
@@ -124,6 +141,7 @@ class AssetPackerTab(TabFrame):
             save_options = save_options,
             spine_options = spine_options,
             enable_rename_fix = self.app.enable_spine38_namefix_var.get(),
+            enable_bleed = self.app.enable_bleed_var.get(),
             log = self.logger.log
         )
         

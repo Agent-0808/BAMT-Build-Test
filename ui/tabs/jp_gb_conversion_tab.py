@@ -8,7 +8,7 @@ from pathlib import Path
 from i18n import t
 import processing
 from ui.base_tab import TabFrame
-from ui.components import Theme, UIComponents, FileListbox, ModeSwitcher
+from ui.components import Theme, UIComponents, FileListbox, ModeSwitcher, SettingRow
 from ui.utils import handle_drop, select_file
 from utils import get_search_resource_dirs
 
@@ -55,15 +55,16 @@ class JpGbConversionTab(TabFrame):
         self.jp_files_listbox.get_frame().pack(fill=tk.BOTH, expand=True)
         
         # --- 选项设置区域 ---
-        options_frame = tb.Frame(self)
+        options_frame = tb.Labelframe(self, text=t("ui.label.options"), padding=10)
         options_frame.pack(fill=tk.X)
         
         # 自动搜索开关
-        UIComponents.create_checkbutton(
+        SettingRow.create_switch(
             options_frame,
-            text=t("option.auto_search"),
-            variable=self.app.auto_search_var
-        ).pack(side=tk.LEFT, padx=5)
+            label=t("option.auto_search"),
+            variable=self.app.auto_search_var,
+            tooltip=t("option.auto_search_info")
+        )
         
         # --- 操作按钮 ---
         action_button_frame = tb.Frame(self)
@@ -75,7 +76,7 @@ class JpGbConversionTab(TabFrame):
             bootstyle="success",
             style="large"
         )
-        self.run_button.pack(fill=tk.X)
+        self.run_button.pack(fill=tk.X, pady=10)
         
         # 初始化视图标签
         self._switch_view()
@@ -160,8 +161,18 @@ class JpGbConversionTab(TabFrame):
             return
         
         # 2. 准备选项
+        crc_setting = self.app.enable_crc_correction_var.get()
+        perform_crc = False
+        
+        if crc_setting == "auto":
+            platform, unity_version = processing.get_unity_platform_info(self.global_bundle_path)
+            self.logger.log(t("log.platform_info", platform=platform, version=unity_version))
+            perform_crc = platform == "StandaloneWindows64"
+        elif crc_setting == "true":
+            perform_crc = True
+        
         save_options = processing.SaveOptions(
-            perform_crc=self.app.enable_crc_correction_var.get(),
+            perform_crc=perform_crc,
             enable_padding=self.app.enable_padding_var.get(),
             compression=self.app.compression_method_var.get()
         )

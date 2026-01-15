@@ -162,8 +162,14 @@ def replace_file(source_path: Path,
     try: 
         if create_backup: 
             backup_path = dest_path.with_suffix(dest_path.suffix + '.backup') 
+            
+            try:
+                shutil.copy2(dest_path, backup_path) 
+            except Exception as e:
+                log(t("log.file.backup_failed", error=e)) 
+                messagebox.showerror(t("common.error"), t("message.process_failed", error=e)) 
+                return False
             log(t("log.file.backed_up", path=backup_path)) 
-            shutil.copy2(dest_path, backup_path) 
         
         log(t("log.file.overwritten", path=dest_path)) 
         shutil.copy2(source_path, dest_path) 
@@ -301,7 +307,8 @@ class ConfigManager:
                     "spine_downgrade_version": app.spine_downgrade_version_var.get()
                 },
                 "Tabs": {
-                    "enable_spine38_namefix": app.enable_spine38_namefix_var.get()
+                    "enable_spine38_namefix": app.enable_spine38_namefix_var.get(),
+                    "enable_bleed": app.enable_bleed_var.get()
                 }
             }
             
@@ -335,7 +342,7 @@ class ConfigManager:
             
             global_options = data.get("GlobalOptions", {})
             app.enable_padding_var.set(global_options.get("enable_padding", False))
-            app.enable_crc_correction_var.set(global_options.get("enable_crc_correction", False))
+            app.enable_crc_correction_var.set(global_options.get("enable_crc_correction", "auto"))
             app.create_backup_var.set(global_options.get("create_backup", False))
             app.compression_method_var.set(global_options.get("compression_method", ""))
             
@@ -357,6 +364,7 @@ class ConfigManager:
             
             tabs = data.get("Tabs", {})
             app.enable_spine38_namefix_var.set(tabs.get("enable_spine38_namefix", False))
+            app.enable_bleed_var.set(tabs.get("enable_bleed", False))
             
             return True
         except Exception as e:
