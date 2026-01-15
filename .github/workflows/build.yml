@@ -45,6 +45,9 @@ jobs:
           mode: onefile
           windows-icon-from-ico: assets/BAMT_128x.ico
 
+          low-memory: true
+          # 经测试使用mingw64可以避免堆内存问题
+          mingw64: true
           enable-plugins: tk-inter
           # 包含代码依赖包
           include-package: |
@@ -52,7 +55,6 @@ jobs:
           # 包含依赖包的数据文件
           include-package-data: |
             UnityPy
-            PIL
             archspec
           include-data-dir: assets=assets
           windows-console-mode: disable
