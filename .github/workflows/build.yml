@@ -32,7 +32,7 @@ jobs:
       - name: Install Dependencies
         run: uv export --no-hashes -o requirements.txt && pip install -r requirements.txt
 
-      # 【新增步骤】从 pyproject.toml 提取版本号并生成 _version.py
+      # 从 pyproject.toml 提取版本号并生成 _version.py 文件
       - name: Extract Version and Generate Meta
         id: get_version
         shell: python
@@ -62,18 +62,16 @@ jobs:
           nuitka-version: main
           script-name: main.pyw
           mode: onefile
-          windows-icon-from-ico: assets/eligma.ico
 
-          # --- 元数据配置 ---
+          # 元数据
+          windows-icon-from-ico: assets/eligma.ico
+          product-name: "BA Modding Toolkit"
           product-version: ${{ steps.get_version.outputs.version }}
           file-version: ${{ steps.get_version.outputs.version }}
-          # 元数据
-          product-name: "BA Modding Toolkit"
-          file-description: "A toolkit for Blue Archive modding"
+          file-description: "Blue Archive Modding Toolkit"
           company-name: "Agent-0808"
           copyright: "Copyright ©2025-2026 Agent-0808. Licensed under GPLv3."
-          trademarks: "Blue Archive is a trademark of NEXON Games Co., Ltd. This tool is unofficial."
-          onefile-windows-splash-screen-image: assets/title.png
+          trademarks: "Blue Archive is a trademark of NEXON Korea Corp.& NEXON Games Co., Ltd. This tool is unofficial."
 
           low-memory: true
           # 经测试使用mingw64可以避免堆内存问题
@@ -87,7 +85,6 @@ jobs:
             UnityPy
             archspec
           include-data-dir: assets=assets
-          # include-data-files: pyproject.toml=pyproject.toml
           windows-console-mode: disable
           output-dir: build
           output-file: "BA-Modding-Toolkit.exe"
