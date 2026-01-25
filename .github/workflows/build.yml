@@ -21,8 +21,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          # architecture: 'x64'
-          # cache: 'pip'
+          architecture: 'x64'
+          cache: 'pip'
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v4
@@ -87,7 +87,7 @@ jobs:
             UnityPy
             archspec
           include-data-dir: assets=assets
-          include-data-file: pyproject.toml=pyproject.toml
+          include-data-files: pyproject.toml=pyproject.toml
           windows-console-mode: disable
           output-dir: build
           output-file: "BA-Modding-Toolkit.exe"
