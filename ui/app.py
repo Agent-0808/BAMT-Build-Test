@@ -10,13 +10,14 @@ from utils import get_environment_info
 from ui.components import Theme, Logger, UIComponents
 from ui.utils import ConfigManager, open_directory, select_directory
 from ui.dialogs import SettingsDialog
-from ui.tabs import ModUpdateTab, CrcToolTab, AssetPackerTab, AssetExtractorTab, JpGbConversionTab
+from ui.base_tab import TabFrame
+from ui.tabs import ModUpdateTab, CrcToolTab, AssetPackerTab, AssetExtractorTab, JPGLConversionTab
 from i18n import i18n_manager, t, get_system_language
 
 class App(tk.Frame):
-    def __init__(self, master):
+    def __init__(self, master: tk.Tk):
         super().__init__(master)
-        self.master = master
+        self.master: tk.Tk = master
         self.setup_main_window()
         self.config_manager = ConfigManager()
         self.init_shared_variables()
@@ -28,6 +29,11 @@ class App(tk.Frame):
     def setup_main_window(self):
         self.master.title(t("ui.app_title"))
         self.master.geometry("600x789")
+        self.root_path: Path = Path(__file__).parent.parent
+        # 设置窗口图标
+        icon_path = self.root_path / "assets" / "eligma.ico"
+        if icon_path.exists():
+            self.master.iconbitmap(icon_path)
 
     def _set_default_values(self):
         """设置所有共享变量的默认值。"""
@@ -59,7 +65,6 @@ class App(tk.Frame):
         
         # Spine 降级选项
         self.enable_atlas_downgrade_var.set(False)
-        self.atlas_downgrade_path_var.set("")
         self.spine_downgrade_version_var.set("3.8.75")  # 设置默认值
         
         # Asset Packer 选项
@@ -87,19 +92,17 @@ class App(tk.Frame):
         # Spine 转换器选项
         self.spine_converter_path_var = tk.StringVar()
         self.enable_spine_conversion_var = tk.BooleanVar()
-        self.target_spine_version_var = tk.StringVar()  # 添加目标Spine版本变量
-        
+        self.target_spine_version_var = tk.StringVar()
         # Spine 降级选项
         self.enable_atlas_downgrade_var = tk.BooleanVar()
-        self.atlas_downgrade_path_var = tk.StringVar()
-        self.spine_downgrade_version_var = tk.StringVar()  # 添加Spine降级版本变量
+        self.spine_downgrade_version_var = tk.StringVar()
         
         # Asset Packer Bleed 选项
         self.enable_spine38_namefix_var = tk.BooleanVar()
         self.enable_bleed_var = tk.BooleanVar()
         
         # 语言设置
-        self.language_var = tk.StringVar(value="zh-CN")
+        self.language_var = tk.StringVar(value=i18n_manager.lang)
         self.available_languages = i18n_manager.get_available_languages()
         
         # 设置默认值
@@ -147,6 +150,12 @@ class App(tk.Frame):
         language = self.language_var.get()
         self.logger.log(t("log.config.loaded"))
         self.logger.log(t("log.config.language", language=language))
+        
+        # 检查语言文件是否存在
+        locales_dir = Path("locales")
+        lang_path = locales_dir / f"{language}.json"
+        if not lang_path.exists():
+            self.logger.log(t("log.config.language_missing", language=language))
 
     def open_settings_dialog(self):
         """打开高级设置对话框"""
@@ -186,7 +195,7 @@ class App(tk.Frame):
             if system_lang and (system_lang.startswith("zh-")):
                 default_language = "zh-CN"
             else:
-                default_language = "debug"
+                default_language = "en-US"
             
             self.language_var.set(default_language)
             print(f"未找到配置文件，根据系统语言检测使用默认语言: {default_language}")
@@ -236,22 +245,22 @@ class App(tk.Frame):
     
     def populate_tabs(self):
         """创建并添加所有的Tab页面到内容区域。"""
-        self.tabs = []
-        self.tab_buttons = []
+        self.tabs: list[tuple[TabFrame, str]] = []
+        self.tab_buttons: list[tuple[tb.Button, TabFrame]] = []
         
         # 创建Tab页面
         mod_update_tab = ModUpdateTab(self.content_frame, self)
         crc_tool_tab = CrcToolTab(self.content_frame, self)
         asset_packer_tab = AssetPackerTab(self.content_frame, self)
         asset_extractor_tab = AssetExtractorTab(self.content_frame, self)
-        jp_gb_conversion_tab = JpGbConversionTab(self.content_frame, self)
+        jp_gl_conversion_tab = JPGLConversionTab(self.content_frame, self)
         
         self.tabs.extend([
             (mod_update_tab, t("ui.tabs.mod_update")),
             (crc_tool_tab, t("ui.tabs.crc_tool")),
             (asset_packer_tab, t("ui.tabs.asset_packer")),
             (asset_extractor_tab, t("ui.tabs.asset_extractor")),
-            (jp_gb_conversion_tab, t("ui.tabs.jp_gb_convert"))
+            (jp_gl_conversion_tab, t("ui.tabs.jp_conversion"))
         ])
         
         # 将所有Tab放置在content_frame的同一位置
@@ -290,7 +299,8 @@ class App(tk.Frame):
         # 如果传入的是元组，提取tab对象
         if isinstance(tab_to_show, tuple):
             tab_to_show = tab_to_show[0]
-        
+        assert(isinstance(tab_to_show, TabFrame))
+
         # 隐藏所有Tab
         for tab, _ in self.tabs:
             tab.pack_forget()
@@ -333,7 +343,7 @@ class App(tk.Frame):
             font=Theme.LOG_FONT,
             background=Theme.LOG_BG,
             foreground=Theme.LOG_FG,
-            selectbackground="#3a5a7a",     # 选中时的背景色
+            selectbackground=Theme.LOG_SELECTED, # 选中时的背景色
             insertbackground=Theme.LOG_FG,  # 光标颜色
             state=tk.DISABLED,              # 初始设为不可编辑
             spacing1=2,                     # 段前间距（像素）

@@ -6,6 +6,7 @@ from tkinterdnd2 import DND_FILES
 from pathlib import Path
 from typing import Callable, Any
 
+from ui.utils import select_file, select_directory
 from i18n import t
 
 # --- 日志管理类 ---
@@ -77,6 +78,7 @@ class Theme:
     # 特殊组件颜色
     LOG_BG = '#2c3e50'
     LOG_FG = '#ecf0f1'
+    LOG_SELECTED = '#3a5a7a'
     STATUS_BAR_BG = '#34495e'
     STATUS_BAR_FG = '#ecf0f1'
     MODE_SWITCHER_ACTIVE = '#e0e0e0'
@@ -314,11 +316,11 @@ class UIComponents:
         entry = UIComponents.create_textbox_entry(frame, textvariable, placeholder_text=placeholder_text)
         entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
 
-        select_btn = UIComponents.create_button(frame, t("action.select_short"), select_cmd, bootstyle="primary", style="compact")
+        select_btn = UIComponents.create_button(frame, t("action.select"), select_cmd, bootstyle="primary", style="compact")
         select_btn.pack(side=tk.LEFT, padx=(0, 5))
 
         if open_button and open_cmd is not None:
-            open_btn = UIComponents.create_button(frame, t("action.open_short"), open_cmd, bootstyle="info", style="compact")
+            open_btn = UIComponents.create_button(frame, t("action.open"), open_cmd, bootstyle="info", style="compact")
             open_btn.pack(side=tk.LEFT)
 
         return frame
@@ -460,10 +462,10 @@ class SettingRow:
         
         # 按钮在最右
         if open_cmd:
-            UIComponents.create_button(right_frame, t("action.open_short"), open_cmd, bootstyle="info", style="compact"
+            UIComponents.create_button(right_frame, t("action.open"), open_cmd, bootstyle="info", style="compact"
             ).pack(side=tk.RIGHT, padx=(5,0))
             
-        UIComponents.create_button(right_frame, t("action.select_short"), select_cmd, bootstyle="primary", style="compact"
+        UIComponents.create_button(right_frame, t("action.select"), select_cmd, bootstyle="primary", style="compact"
         ).pack(side=tk.RIGHT, padx=(5,0))
         
         # 输入框填充剩余中间区域
@@ -647,7 +649,7 @@ class FileListbox:
         self.file_list: list[Path] = file_list
         self.placeholder_text = placeholder_text
         self.height = height
-        self.logger = logger
+        self.logger: Logger = logger
         self.display_formatter = display_formatter
         self.on_files_added = on_files_added
         
@@ -819,23 +821,19 @@ class FileListbox:
     
     def _browse_add_files(self):
         """浏览添加文件"""
-        from ui.utils import select_file
-        
         select_file(
             title=t("action.add_files"),
             filetypes=[(t("file_type.bundle"), "*.bundle"), (t("file_type.all_files"), "*.*")],
             multiple=True,
             callback=lambda paths: self.add_files(paths),
-            logger=self.logger.log if self.logger else None
+            log=self.logger.log if self.logger else None
         )
     
     def _browse_add_folder(self):
         """浏览添加文件夹"""
-        from ui.utils import select_directory
-        
         folder = select_directory(
             title = t("action.add_folder"),
-            logger = self.logger.log if self.logger else None
+            log = self.logger.log if self.logger else None
             )
 
         if folder:

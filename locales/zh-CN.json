@@ -24,9 +24,7 @@
 		"browse_file": "浏览文件...",
 		"browse_folder": "浏览文件夹...",
 		"select": "选择",
-		"select_short": "选",
 		"open": "打开",
-		"open_short": "开",
 		"enable": "启用",
 		"disable": "禁用",
 		"add": "添加",
@@ -56,7 +54,7 @@
 		"crc_correction": "CRC修正",
 		"crc_correction_info": "修正 Bundle 文件的 CRC 校验值，防止文件被修改后出现“不正常的客户端”提示。\nSteam 版本必须开启此选项，手机端无需开启。\n选择“自动”时，会根据目标 Bundle 文件的平台信息自动判断是否需要开启。",
 		"padding": "添加私货",
-		"padding_info": "在文件末端添加`0x08080808`",
+		"padding_info": "在文件末端添加\"0x08080808\"",
 		"backup": "创建备份",
 		"backup_info": "在替换文件前创建备份",
 		"compression_method": "压缩方式",
@@ -74,7 +72,7 @@
 		"spine_target_version": "目标版本",
 		"spine_target_version_info": "格式应为 \"A.B.C\" 形式",
 		"spine_downgrade": "启用 Spine 降级",
-		"spine_downgrade_info": "（可选扩展功能）\n调用外部程序，导出支持旧版 Spine 的文件（.skel 与 .atlas）\n需要配置 Skel 转换器与 Atlas 降级工具的路径。",
+		"spine_downgrade_info": "（可选扩展功能）\n调用外部程序，导出支持旧版 Spine 的文件（.skel 与 .atlas）\n需要配置 Skel 转换器的路径。",
 		"spine_downgrade_target_version": "目标版本",
 		"spine_downgrade_target_version_info": "格式应为 \"A.B.C\" 形式",
 		"auto_search": "自动搜索对应文件",
@@ -87,8 +85,6 @@
 		"output_dir_info": "",
 		"skel_converter_path": "Skel 转换器路径",
 		"skel_converter_path_info": "SpineSkeletonDataConverter.exe 文件的路径",
-		"atlas_downgrade_path": "Atlas 降级工具路径",
-		"atlas_downgrade_path_info": "SpineAtlasDowngrade.exe 文件的路径",
 		"enable_bleed": "启用 Bleed 处理",
 		"enable_bleed_info": "为图片文件进行 Bleed 操作\n如果打包后的图片在游戏中出现黑色、锯齿状边缘，建议开启此选项。",
 		"enable_spine38_name_fix": "修正旧版 Spine 文件名",
@@ -99,8 +95,7 @@
 		"all_files": "所有文件",
 		"bundle": "AssetBundle 文件",
 		"folder": "文件夹",
-		"skel_converter": "SpineSkeletonConverter.exe",
-		"atlas_downgrade": "SpineAtlasDowngrade.exe"
+		"skel_converter": "SpineSkeletonConverter.exe"
 	},
 	"message": {
 		"confirm_replace_file": "此操作将覆盖文件: {path}\n\n建议确保已开启备份功能。\n确定要继续吗？",
@@ -163,7 +158,6 @@
 			"correction_failed_file_not_generated": "CRC 修正失败。最终文件 \"{name}\" 未能生成。"
 		},
 		"spine": {
-			"missing_downgrade_tool": "已启用 Spine 降级，但未指定有效的 SpineAtlasDowngrade.exe 路径。",
 			"missing_converter_tool": "已启用 Spine 降级，但未指定有效的 SpineDataConverter.exe 路径。"
 		},
 		"search": {
@@ -172,9 +166,10 @@
 			"check_file_exists": "请检查 \"{path}\" 是否存在。",
 			"no_matching_files_in_dir": "在指定目录中未找到任何匹配的文件。",
 			"load_old_mod_failed": "加载旧版Mod文件失败。",
-			"no_texture2d_in_old_mod": "旧版Mod文件中不包含任何 Texture2D 资源。",
+			"no_comparable_assets": "旧版Mod文件中不包含可比较的资源。",
 			"new_file_confirmed": "已确定新版文件: {name}",
-			"no_matching_texture_found": "在所有候选文件中都未找到与旧版Mod贴图名称匹配的资源。无法确定正确的新版文件。"
+			"no_matching_asset_found": "在所有候选文件中都未找到与旧 Mod 资源名称匹配的资源。无法确定正确的新版文件。",
+			"found_multiple_matches": "找到 {count} 个匹配的文件"
 		},
 		"extractor": {
 			"no_assets_found": "未找到指定类型的可提取资源。",
@@ -242,11 +237,11 @@
 			"save_failed": "保存配置失败: {error}",
 			"load_failed": "读取失败",
 			"loaded": "已读取配置文件",
-			"language": "当前语言：{language}"
+			"language": "当前语言：{language}",
+			"language_missing": "语言文件 \"{language}\" 不存在"
 		},
 		"spine": {
 			"skel_converter_set": "已设置 Skel 转换器: {path}",
-			"atlas_downgrade_set": "已设置 Atlas 降级工具： {path}",
 			"skel_version_detection_failed": "无法检测当前 .skel 文件版本",
 			"converting_skel": "正在转换 .skel 文件: {name}",
 			"version_conversion": "当前版本: {current} -> 目标版本: {target}",
@@ -256,14 +251,14 @@
 			"skel_detected": "检测到 .skel 文件: {name}",
 			"version_mismatch_converting": "检测到Spine版本不匹配（当前{current}，目标{target}），将进行转换。",
 			"converting_atlas": "正在转换 Atlas: {name}",
-			"atlas_conversion_failed": "Atlas 转换失败",
 			"version_detected_downgrading": "检测到Spine版本: {version}，尝试降级...",
 			"atlas_downgrade_success": "Atlas 降级成功",
 			"atlas_downgrade_failed": "Atlas 降级失败",
 			"missing_matching_atlas": "找到 {skel} 但缺少匹配的 {atlas}，将作为独立文件处理。",
 			"skel_conversion_failed_using_original": "skel 转换失败，将使用原始 .skel 文件。",
 			"no_skel_found": "在bundle中未找到 .skel 文件。",
-			"edit_atlas": "编辑了 Atlas 文件: {filename}"
+			"edit_atlas": "编辑了 Atlas 文件: {filename}",
+			"rescaling_page": "正在缩放页面 {page} (scale: {scale})"
 		},
 		"packer": {
 			"start_packing": "开始从资源文件夹打包...",
@@ -311,13 +306,14 @@
 			"searching_for_file": "正在为 \"{name}\" 搜索对应文件...",
 			"file_prefix": "文件前缀: \"{prefix}\"",
 			"found_candidates": "找到 {count} 个候选文件，正在验证内容...",
-			"old_mod_texture_count": "旧版Mod包含 {count} 个贴图资源。",
+			"old_mod_asset_count": "旧 Mod 包含 {count} 个资源。",
 			"checking_candidate": "正在检查: {name}",
 			"find_failed": "查找失败: {message}",
 			"found_count": "成功查找到 {count} 个匹配文件。"
 		},
 		"extractor": {
 			"starting_extraction": "开始从 \"{filename}\" 提取资源...",
+			"starting_extraction_num": "开始从 {num} 个文件中提取资源...",
 			"extraction_types": "提取类型: {types}",
 			"using_temp_dir": "使用临时目录: {path}",
 			"skipping_unnamed": "跳过一个未命名的 {type} 资源",
@@ -381,7 +377,7 @@
 		"generated_file_not_found": "操作提示成功，但在输出目录中找不到生成的文件。",
 		"replace_resource_failed": "替换资源 [{type}] {name} 时发生错误: {error}",
 		"platform_info": "目标平台: {platform} (Unity {version})",
-		"unnamed_resource": "<{type} 资源>"
+		"unnamed_resource": "未命名的 {type} 资源"
 	},
 	"ui": {
 		"app_title": "BA Modding Toolkit",
@@ -390,7 +386,7 @@
 			"crc_tool": "CRC 工具",
 			"asset_packer": "资源打包",
 			"asset_extractor": "资源提取",
-			"jp_gb_convert": "JP/GB 转换"
+			"jp_conversion": "JP/GL 转换"
 		},
 		"settings": {
 			"title": "设置",
@@ -404,7 +400,7 @@
 		"mod_update": {
 			"mode_single": "单个更新",
 			"mode_batch": "批量更新",
-			"placeholder_old": "拖放待更新旧版 Mod 文件到此处\n或点击下方按钮选择",
+			"placeholder_old": "拖放待更新或移植的 Mod 文件到此处\n或点击下方按钮选择",
 			"placeholder_new": "选择修改后文件后将自动查找原始文件\n或手动拖放/浏览文件",
 			"placeholder_batch": "将文件或文件夹拖放到此处...",
 			"status_searching": "正在搜索对应资源...",
@@ -419,11 +415,11 @@
 			"placeholder_bundle": "拖放目标 Bundle 文件\n或点击下方按钮选择"
 		},
 		"extractor": {
-			"placeholder_bundle": "拖放要提取资源的 Bundle 文件\n或点击下方按钮选择"
+			"placeholder_bundle": "拖放所有待提取资源的 Bundle 文件到此处"
 		},
-		"jp_gb_convert": {
-			"mode_jp_to_gb": "JP → Global (合并)",
-			"mode_gb_to_jp": "Global → JP (拆分)",
+		"jp_conversion": {
+			"mode_jp_to_gl": "JP → Global (合并)",
+			"mode_gl_to_jp": "Global → JP (拆分)",
 			"placeholder_jp_files": "拖放所有相关的日服文件 (textures, textassets...) 到此处",
 			"role_jp_source": "日服 Bundle (源文件)",
 			"role_global_source": "国际服 Bundle (源文件)",
@@ -434,7 +430,10 @@
 		},
 		"dialog": {
 			"select": "选择{type}",
-			"add": "添加{type}"
+			"add": "添加{type}",
+			"select_file": "选择文件",
+			"multiple_matches_found": "找到 {count} 个匹配的文件：",
+			"selection_cancelled": "已取消选择"
 		},
 		"drop_zone": {
 			"file_hint": "将文件拖放到此处\n或点击下方按钮选择",
@@ -451,6 +450,7 @@
 			"game_resource_dir": "游戏资源目录",
 			"assets_folder_to_pack": "待打包资源文件夹",
 			"target_bundle_file": "目标 Bundle 文件",
+			"bundles_to_extract": "待提取资源的 Bundle 文件",
 			"original_file": "原始文件",
 			"modified_file": "待修正文件",
 			"environment": "运行环境",

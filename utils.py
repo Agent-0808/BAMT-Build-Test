@@ -10,8 +10,16 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
+from SpineAtlas import Atlas, ReadAtlasFile, AtlasScale
 
 from i18n import i18n_manager, t
+
+def get_version() -> str:
+    """从 pyproject.toml 读取版本号"""
+    pyproject_path = Path("pyproject.toml")
+    import toml
+    data = toml.load(pyproject_path)
+    return data.get("project", {}).get("version")
 
 def no_log(message):
     """A dummy logger that does nothing."""
@@ -205,7 +213,8 @@ def get_environment_info():
     
     # --- Attempt to import libraries and get their versions ---
     # This approach prevents the script from crashing if a library is not installed.
-
+    import importlib.metadata
+    
     try:
         import UnityPy
         unitypy_version = UnityPy.__version__ or "Installed"
@@ -235,12 +244,28 @@ def get_environment_info():
         tkinterdnd2_version = "Unknown"
 
     try:
-        import importlib.metadata
         tb_version = importlib.metadata.version('ttkbootstrap')
     except ImportError:
         tb_version = "Not installed"
     except (AttributeError, importlib.metadata.PackageNotFoundError):
         tb_version = "Unknown"
+
+    try:
+        import toml
+        toml_version = toml.__version__ or "Installed"
+    except ImportError:
+        toml_version = "Not installed"
+
+    try:
+        import SpineAtlas
+        spineatlas_version = SpineAtlas.__version__ or "Installed"
+    except ImportError:
+        spineatlas_version = "Not installed"
+    except AttributeError:
+        try:
+            spineatlas_version = importlib.metadata.version('spineatlas')
+        except (ImportError, importlib.metadata.PackageNotFoundError):
+            spineatlas_version = "Unknown"
 
     # --- Locale and Encoding Information (crucial for file path/text bugs) ---
     try:
@@ -250,6 +275,10 @@ def get_environment_info():
     except (ValueError, TypeError):
         system_locale = "Could not determine"
 
+    try:
+        version = get_version()
+    except:
+        version = "Unknown"
 
     import platform
     import sys
@@ -268,6 +297,7 @@ def get_environment_info():
 
     # --- Available Languages ---
     lines.append("\n--- BA Modding Toolkit ---")
+    lines.append(f"Version:             {version}")
     lines.append(f"Current Language:    {i18n_manager.lang}")
     lines.append(f"Available Languages: {', '.join(i18n_manager.get_available_languages())}")
 
@@ -293,6 +323,8 @@ def get_environment_info():
     lines.append(f"Tkinter Version:     {tk_version}")
     lines.append(f"TkinterDnD2 Version: {tkinterdnd2_version}")
     lines.append(f"ttkbootstrap Version:{tb_version}")
+    lines.append(f"toml Version:        {toml_version}")
+    lines.append(f"SpineAtlas Version:  {spineatlas_version}")
     
     lines.append("")
 
@@ -511,26 +543,42 @@ class SpineUtils:
     def run_atlas_downgrader(
         input_atlas: Path,
         output_dir: Path,
-        converter_path: Path,
         log: LogFunc = no_log,
-    ) -> bool:
-        """使用 SpineAtlasDowngrade.exe 转换图集数据。"""
+    ) -> tuple[bool, list[str]]:
+        """使用 SpineAtlas 转换图集数据为 Spine 3 格式。"""
+        processed_pngs = []
         try:
-            cmd = [str(converter_path), str(input_atlas), str(output_dir)]
             log(f'    > {t("log.spine.converting_atlas", name=input_atlas.name)}')
-            log(f'      > {t("log.spine.executing_command", command=" ".join(cmd))}')
-            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', check=False)
-
-            if result.returncode == 0:
-                return True
-            else:
-                log(f'      ✗ {t("log.spine.atlas_conversion_failed")}:')
-                log(f"        stdout: {result.stdout.strip()}")
-                log(f"        stderr: {result.stderr.strip()}")
-                return False
+            
+            atlas: Atlas = ReadAtlasFile(str(input_atlas))
+            atlas.version = False
+            
+            for page in atlas.atlas:
+                if page.scale != 1.0:
+                    log(f'      > {t("log.spine.rescaling_page", page=page.png, scale=page.scale)}')
+                    
+                    reverse_scale = 1.0 / page.scale
+                    AtlasScale(page, reverse_scale, reverse_scale)
+                    page.scale = 1.0
+                    
+                    img_path = input_atlas.parent / page.png
+                    if img_path.exists():
+                        with Image.open(img_path) as img:
+                            w, h = img.size
+                            new_w = int(w * reverse_scale)
+                            new_h = int(h * reverse_scale)
+                            resized_img = img.resize((new_w, new_h), Image.BICUBIC)
+                            resized_img.save(output_dir / page.png)
+                            page.w = new_w
+                            page.h = new_h
+                            processed_pngs.append(page.png)
+            
+            output_path = output_dir / input_atlas.name
+            atlas.SaveAtlas(str(output_path))
+            return True, processed_pngs
         except Exception as e:
             log(f'      ✗ {t("log.error_detail", error=e)}')
-            return False
+            return False, processed_pngs
 
     @staticmethod
     def handle_group_downgrade(
@@ -538,7 +586,6 @@ class SpineUtils:
         atlas_path: Path,
         output_dir: Path,
         skel_converter_path: Path,
-        atlas_converter_path: Path,
         target_version: str,
         log: LogFunc = no_log,
     ) -> None:
@@ -551,17 +598,22 @@ class SpineUtils:
         with tempfile.TemporaryDirectory() as conv_out_dir_str:
             conv_output_dir = Path(conv_out_dir_str)
 
-            atlas_success = SpineUtils.run_atlas_downgrader(
-                atlas_path, conv_output_dir, atlas_converter_path, log
+            atlas_success, processed_pngs = SpineUtils.run_atlas_downgrader(
+                atlas_path, conv_output_dir, log
             )
 
             if atlas_success:
-                log(f'      > {t("log.spine.atlas_downgrade_success")}')
+                log(f'    > {t("log.spine.atlas_downgrade_success")}')
+                
+                for png_file in atlas_path.parent.glob("*.png"):
+                    if png_file.name not in processed_pngs:
+                        shutil.copy2(png_file, conv_output_dir / png_file.name)
+                
                 for converted_file in conv_output_dir.iterdir():
                     shutil.copy2(converted_file, output_dir / converted_file.name)
-                    log(f"        - {converted_file.name}")
+                    log(f"      - {converted_file.name}")
             else:
-                log(f'      ✗ {t("log.spine.atlas_downgrade_failed")}.')
+                log(f'    ✗ {t("log.spine.atlas_downgrade_failed")}.')
 
             output_skel_path = output_dir / skel_path.name
             skel_success, _ = SpineUtils.run_skel_converter(
@@ -600,6 +652,7 @@ class SpineUtils:
                     old_name = source_file.stem
                     new_name = old_name
 
+                    # TODO: 修复 [CH0144.png] -> [CH014_4.png]
                     match = re.search(r'^(.*)(\d+)$', old_name)
                     if match:
                         prefix = match.group(1)

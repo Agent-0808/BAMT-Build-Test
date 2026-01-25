@@ -3,6 +3,7 @@
 import UnityPy
 from UnityPy.enums import ClassIDType as AssetType
 from UnityPy.files import ObjectReader as Obj, SerializedFile
+from UnityPy.environment import Environment as Env
 import traceback
 from pathlib import Path
 from PIL import Image
@@ -10,7 +11,7 @@ import shutil
 import re
 import tempfile
 from dataclasses import dataclass
-from typing import Callable, Any, Literal
+from typing import Callable, Any, Literal, NamedTuple
 
 from i18n import t
 from utils import CRCUtils, SpineUtils, ImageUtils, no_log
@@ -21,15 +22,41 @@ from utils import CRCUtils, SpineUtils, ImageUtils, no_log
 AssetKey 表示资源的唯一标识符，在不同的流程中可以使用不同的键
     str 类型 表示资源名称，在资源打包工具中使用
     int 类型 表示 path_id
-    tuple[str, str] 类型 表示 (名称, 类型) 元组
+    NameTypeKey 类型 表示 (名称, 类型) 的命名元组
+    ContNameTypeKey 类型 表示 (容器名, 名称, 类型) 的命名元组
 """
-AssetKey = str | int | tuple[str, str]
+class NameTypeKey(NamedTuple):
+    name: str | None
+    type: str
+    def __str__(self) -> str:
+        return f"[{self.type}] {self.name}"
+
+class ContNameTypeKey(NamedTuple):
+    container: str | None
+    name: str
+    type: str
+    def __str__(self) -> str:
+        return f"[{self.type}] {self.name} @ {self.container}"
+
+AssetKey = str | int | NameTypeKey | ContNameTypeKey
 
 # 资源的具体内容，可以是字节数据、PIL图像或None
 AssetContent = bytes | Image.Image | None  
 
-# 从对象生成资源键的函数，接收UnityPy对象和一个额外参数，返回该资源的键
-KeyGeneratorFunc = Callable[[Obj, Any], AssetKey]
+# 从对象生成资源键的函数，接收UnityPy对象，返回该资源的键
+KeyGeneratorFunc = Callable[[Obj], AssetKey]
+
+# 资源匹配策略集合，用于在不同场景下生成资源键。
+MATCH_STRATEGIES: dict[str, KeyGeneratorFunc] = {
+    # path_id: 使用 Unity 对象的 path_id 作为键，适用于相同版本精确匹配，主要方式
+    'path_id': lambda obj: obj.path_id,
+    # container: 使用 Unity 对象的 container 作为键（弃用，因为发现同一个container下可以用重名资源）
+    'container': lambda obj: obj.container,
+    # name_type: 使用 (资源名, 资源类型) 作为键，适用于按名称和类型匹配，在Asset Packing中使用
+    'name_type': lambda obj: NameTypeKey(obj.peek_name(), obj.type.name),
+    # cont_name_type: 使用 (容器名, 资源名, 资源类型) 作为键，适用于按容器、名称和类型匹配，用于跨版本移植
+    'cont_name_type': lambda obj: ContNameTypeKey(obj.container, obj.peek_name(), obj.type.name),
+}
 
 # 日志函数类型
 LogFunc = Callable[[str], None]  
@@ -46,13 +73,13 @@ class SaveOptions:
 
 @dataclass
 class SpineOptions:
-    """封装了Spine版本更新相关的选项。"""
+    """封装了Spine版本转换相关的选项。"""
     enabled: bool = False
     converter_path: Path | None = None
     target_version: str | None = None
 
-    def is_enabled(self) -> bool:
-        """检查Spine升级功能是否已配置并可用。"""
+    def is_valid(self) -> bool:
+        """检查Spine转换功能是否已配置并可用。"""
         return (
             self.enabled
             and self.converter_path
@@ -61,43 +88,9 @@ class SpineOptions:
             and self.target_version.count(".") == 2
         )
 
-@dataclass
-class SpineDowngradeOptions:
-    """封装了Spine版本降级相关的选项。"""
-    enabled: bool = False
-    skel_converter_path: Path | None = None
-    atlas_converter_path: Path | None = None
-    target_version: str = "3.8.75"
-
-    def is_valid(self) -> bool:
-        """检查Spine降级功能是否已配置并可用。"""
-        return (
-            self.enabled
-            and self.skel_converter_path is not None
-            and self.skel_converter_path.exists()
-            and self.atlas_converter_path is not None
-            and self.atlas_converter_path.exists()
-            and self.target_version
-            and self.target_version.count(".") == 2
-        )
-
-"""
-资源匹配策略集合，用于在不同场景下生成资源键。
-
-策略说明：
-- path_id: 使用 Unity 对象的 path_id 作为键，适用于精确匹配
-- container: 使用 Unity 对象的 container 作为键
-- name_type: 使用 (资源名, 资源类型) 作为键，适用于按名称和类型匹配
-"""
-MATCH_STRATEGIES: dict[str, KeyGeneratorFunc] = {
-    'path_id': lambda obj, data: obj.path_id,
-    'container': lambda obj, data: obj.container,
-    'name_type': lambda obj, data: (getattr(data, 'm_Name', None), obj.type.name),
-}
-
 # ====== 读取与保存相关 ======
 
-def get_unity_platform_info(input: Path | UnityPy.Environment) -> tuple[str, str]:
+def get_unity_platform_info(input: Path | Env) -> tuple[str, str]:
     """
     获取 Bundle 文件的平台信息和 Unity 版本。
     
@@ -107,7 +100,7 @@ def get_unity_platform_info(input: Path | UnityPy.Environment) -> tuple[str, str
     """
     if isinstance(input, Path):
         env = UnityPy.load(str(input))
-    elif isinstance(input, UnityPy.Environment):
+    elif isinstance(input, Env):
         env = input
     else:
         raise ValueError("input 必须是 Path 或 UnityPy.Environment 类型")
@@ -122,7 +115,7 @@ def get_unity_platform_info(input: Path | UnityPy.Environment) -> tuple[str, str
 def load_bundle(
     bundle_path: Path,
     log: LogFunc = no_log
-) -> UnityPy.Environment | None:
+) -> Env | None:
     """
     尝试加载一个 Unity bundle 文件。
     如果直接加载失败，会尝试移除末尾的几个字节后再次加载。
@@ -160,7 +153,7 @@ def load_bundle(
     return None
 
 def save_bundle(
-    env: UnityPy.Environment,
+    env: Env,
     output_path: Path,
     compression: CompressionType = "lzma",
     log: LogFunc = no_log,
@@ -179,7 +172,7 @@ def save_bundle(
         return False
 
 def compress_bundle(
-    env: UnityPy.Environment,
+    env: Env,
     compression: CompressionType = "none",
     log: LogFunc = no_log,
 ) -> bytes:
@@ -203,7 +196,7 @@ def compress_bundle(
     return env.file.save(**save_kwargs)
 
 def _save_and_crc(
-    env: UnityPy.Environment,
+    env: Env,
     output_path: Path,
     original_bundle_path: Path,
     save_options: SaveOptions,
@@ -302,85 +295,109 @@ def find_new_bundle_path(
     old_mod_path: Path,
     game_resource_dir: Path | list[Path],
     log: LogFunc = no_log,
-) -> tuple[Path | None, str]:
+) -> tuple[list[Path], str]:
     """
     根据旧版Mod文件，在游戏资源目录中智能查找对应的新版文件。
-    支持单个目录路径或目录路径列表。
-    返回 (找到的路径对象, 状态消息) 的元组。
+    
+    Returns:
+        tuple[list[Path], str]: (找到的路径列表, 状态消息)
     """
-    # TODO: 只用Texture2D比较好像不太对，但是it works
-
     if not old_mod_path.exists():
-        return None, t("message.search.check_file_exists", path=old_mod_path)
+        return [], t("message.search.check_file_exists", path=old_mod_path)
 
     log(t("log.search.searching_for_file", name=old_mod_path.name))
 
     # 1. 提取文件名前缀
-    prefix, prefix_message = get_filename_prefix(str(old_mod_path.name), log)
-    if not prefix:
-        return None, prefix_message
+    if not (prefix_info := get_filename_prefix(str(old_mod_path.name), log))[0]:
+        return None, prefix_info[1]
+    
+    prefix, _ = prefix_info
     log(f"  > {t('log.search.file_prefix', prefix=prefix)}")
     extension = '.bundle'
+    extension_backup = '.backup'
 
-    # 2. 处理单个目录或目录列表
-    if isinstance(game_resource_dir, Path):
-        search_dirs = [game_resource_dir]
-    else:
-        search_dirs = game_resource_dir
-
-    # 3. 查找所有候选文件（前缀相同且扩展名一致）
-    candidates: list[Path] = []
-    for search_dir in search_dirs:
-        if search_dir.exists() and search_dir.is_dir():
-            dir_candidates = [f for f in search_dir.iterdir() if f.is_file() and f.name.startswith(prefix) and f.suffix == extension]
-            candidates.extend(dir_candidates)
+    # 2. 收集所有候选文件
+    search_dirs = [game_resource_dir] if isinstance(game_resource_dir, Path) else game_resource_dir
+    
+    candidates = [
+        file for dir in search_dirs 
+        if dir.exists() and dir.is_dir()
+        for file in dir.iterdir()
+        if file.is_file() and file.name.startswith(prefix) and file.suffix != extension_backup
+    ]
     
     if not candidates:
         msg = t("message.search.no_matching_files_in_dir")
         log(f'  > {t("common.fail")}: {msg}')
-        return None, msg
+        return [], msg
     log(f"  > {t('log.search.found_candidates', count=len(candidates))}")
 
-    # 4. 加载旧Mod获取贴图列表
-    old_env = load_bundle(old_mod_path, log)
-    if not old_env:
+    # 3. 分析旧Mod的关键资源特征
+    # 定义用于识别的资源类型
+    comparable_types = {AssetType.Texture2D, AssetType.TextAsset, AssetType.Mesh}
+    
+    if not (old_env := load_bundle(old_mod_path, log)):
         msg = t("message.search.load_old_mod_failed")
         log(f'  > {t("common.fail")}: {msg}')
-        return None, msg
-    
-    old_textures_map = {obj.read().m_Name for obj in old_env.objects if obj.type == AssetType.Texture2D}
-    
-    if not old_textures_map:
-        msg = t("message.search.no_texture2d_in_old_mod")
-        log(f'  > {t("common.fail")}: {msg}')
-        return None, msg
-    log(f"  > {t('log.search.old_mod_texture_count', count=len(old_textures_map))}")
+        return [], msg
 
-    # 5. 遍历候选文件，找到第一个包含匹配贴图的
+    # 使用标准策略生成 Key，保持一致性
+    key_func = MATCH_STRATEGIES['name_type']
+    
+    # 仅提取 Key，不读取数据
+    # 使用 set 推导式构建指纹
+    old_assets_fingerprint = {
+        key_func(obj)
+        for obj in old_env.objects
+        if obj.type in comparable_types
+    }
+
+    if not old_assets_fingerprint:
+        msg = t("message.search.no_comparable_assets")
+        log(f'  > {t("common.fail")}: {msg}')
+        return [], msg
+
+    log(f"  > {t('log.search.old_mod_asset_count', count=len(old_assets_fingerprint))}")
+
+    # 4. 遍历候选文件进行指纹比对，收集所有匹配的文件
+    matched_paths = []
     for candidate_path in candidates:
         log(f"  - {t('log.search.checking_candidate', name=candidate_path.name)}")
         
-        env = load_bundle(candidate_path, log)
-        if not env: continue
+        if not (env := load_bundle(candidate_path, log)):
+            continue
         
+        # 检查新包中是否有匹配的资源
+        has_match = False
         for obj in env.objects:
-            if obj.type == AssetType.Texture2D and obj.read().m_Name in old_textures_map:
-                msg = t("message.search.new_file_confirmed", name=candidate_path.name)
-                log(f"  ✅ {msg}")
-                return candidate_path, msg
+            if obj.type in comparable_types:
+                candidate_key = key_func(obj)
+                if candidate_key in old_assets_fingerprint:
+                    has_match = True
+                    break
+        
+        if has_match:
+            matched_paths.append(candidate_path)
+            msg = t("message.search.new_file_confirmed", name=candidate_path.name)
+            log(f"  ✅ {msg}")
     
-    msg = t("message.search.no_matching_texture_found")
-    log(f'  > {t("common.fail")}: {msg}')
-    return None, msg
+    if not matched_paths:
+        msg = t("message.search.no_matching_asset_found")
+        log(f'  > {t("common.fail")}: {msg}')
+        return [], msg
+    
+    msg = t("message.search.found_multiple_matches", count=len(matched_paths))
+    log(f"  > {msg}")
+    return matched_paths, msg
 
 # ====== 资源处理相关 ======
 
 def _apply_replacements(
-    env: UnityPy.Environment,
+    env: Env,
     replacement_map: dict[AssetKey, AssetContent],
     key_func: KeyGeneratorFunc,
     log: LogFunc = no_log,
-) -> tuple[int, list[str], set[AssetKey]]:
+) -> tuple[int, list[str], list[AssetKey]]:
     """
     将“替换清单”中的资源应用到目标环境中。
 
@@ -405,7 +422,15 @@ def _apply_replacements(
         
         try:
             data = obj.read()
-            asset_key = key_func(obj, data)
+            asset_key = key_func(obj)
+            
+            # 跳过 asset_key 为 None 的对象（如 GameObject、Transform 等）
+            if asset_key is None:
+                continue
+            
+            # 额外检查：确保类型在白名单中
+            if obj.type not in REPLACEABLE_ASSET_TYPES:
+                continue
 
             if asset_key in tasks:
                 content = tasks.pop(asset_key)
@@ -418,25 +443,20 @@ def _apply_replacements(
                     # content 是 bytes，需要解码成 str
                     data.m_Script = content.decode("utf-8", "surrogateescape")
                     data.save()
-                elif obj.type in {AssetType.Mesh, AssetType.Material, AssetType.Shader, AssetType.AnimationClip}:
-                    obj.set_raw_data(content)
-                elif "ALL" in replacement_map.get("__mode__", set()): 
-                # Check for a special key if we're in "ALL" mode
+                else:
+                    # 其他类型直接设置原始数据
                     obj.set_raw_data(content)
 
                 replacement_count += 1
-                log_message = f"[{obj.type.name}] {resource_name}"
+                key_display = str(asset_key)
+                log_message = f"[{obj.type.name}] {resource_name} (key: {key_display})"
                 replaced_assets_log.append(log_message)
 
         except Exception as e:
-            resource_name_for_error = "N/A"
-            try:
-                resource_name_for_error = obj.read().m_Name
-            except Exception:
-                pass
+            resource_name_for_error = obj.peek_name() or t("log.unnamed_resource", type=obj.type.name)
             log(f'  ❌ {t("common.error")}: {t("log.replace_resource_failed", name=resource_name_for_error, type=obj.type.name, error=e)}')
 
-    return replacement_count, replaced_assets_log, set(tasks.keys())
+    return replacement_count, replaced_assets_log, list(tasks.keys())
 
 def process_asset_packing(
     target_bundle_path: Path,
@@ -494,32 +514,36 @@ def process_asset_packing(
             content: AssetContent
             suffix: str = file_path.suffix.lower()
             if suffix == ".png":
-                asset_key = (file_path.stem, AssetType.Texture2D.name)
+                asset_key = NameTypeKey(file_path.stem, AssetType.Texture2D.name)
                 content = Image.open(file_path).convert("RGBA")
                 if enable_bleed:
                     content = ImageUtils.bleed_image(content)
                     log(f"  > {t('log.packer.bleed_processed', name=file_path.stem)}")
-            else: # .skel, .atlas
-                asset_key = (file_path.name, AssetType.TextAsset.name)
+            elif suffix in {".skel", ".atlas"}:
+                asset_key = NameTypeKey(file_path.name, AssetType.TextAsset.name)
                 with open(file_path, "rb") as f:
                     content = f.read()
                 
                 if file_path.suffix.lower() == '.skel':
                     content = SpineUtils.handle_skel_upgrade(
                         skel_bytes=content,
-                        resource_name=asset_key[0],
+                        resource_name=asset_key.name,
                         enabled=spine_options.enabled if spine_options else False,
                         converter_path=spine_options.converter_path if spine_options else None,
                         target_version=spine_options.target_version if spine_options else None,
                         log=log
                     )
+            else:
+                raise TypeError(f"Unsupported suffix: {suffix}")
+                pass
             replacement_map[asset_key] = content
         
         original_tasks_count = len(replacement_map)
         log(t("log.packer.found_files_to_process", count=original_tasks_count))
 
         # 2. 定义用于在 bundle 中查找资源的 key 生成函数
-        key_func = MATCH_STRATEGIES['name_type']
+        strategy_name = 'name_type'
+        key_func = MATCH_STRATEGIES[strategy_name]
 
         # 3. 应用替换
         replacement_count, replaced_assets_log, unmatched_keys = _apply_replacements(env, replacement_map, key_func, log)
@@ -530,7 +554,7 @@ def process_asset_packing(
             return False, t("message.packer.no_matching_assets_to_pack")
         
         # 报告替换结果
-        log(f"\n✅ {t('log.migration.strategy_success', name='name_type', count=replacement_count)}:")
+        log(f"\n✅ {t('log.migration.strategy_success', name=strategy_name, count=replacement_count)}:")
         for item in replaced_assets_log:
             log(f"  - {item}")
 
@@ -541,13 +565,16 @@ def process_asset_packing(
             log(f"⚠️ {t('common.warning')}: {t('log.packer.unmatched_files_warning')}:")
             # 为了找到原始文件名，我们需要反向查找
             original_filenames = {
-                (f.stem, AssetType.Texture2D.name): f.name for f in input_files if f.suffix.lower() == '.png'
+                NameTypeKey(f.stem, AssetType.Texture2D.name): f.name for f in input_files if f.suffix.lower() == '.png'
             }
             original_filenames.update({
-                (f.name, AssetType.TextAsset.name): f.name for f in input_files if f.suffix.lower() in {'.skel', '.atlas'}
+                NameTypeKey(f.name, AssetType.TextAsset.name): f.name for f in input_files if f.suffix.lower() in {'.skel', '.atlas'}
             })
             for key in sorted(unmatched_keys):
-                key_display = f"[{key[1]}] {key[0]}" if isinstance(key, tuple) else key
+                if isinstance(key, NameTypeKey):
+                    key_display = f"[{key.type}] {key.name}"
+                else:
+                    key_display = str(key)
                 log(f"  - {original_filenames.get(key, key)} ({t('log.packer.attempted_match', key=key_display)})")
 
         # 4. 保存和修正
@@ -578,10 +605,10 @@ def process_asset_packing(
                 pass
 
 def process_asset_extraction(
-    bundle_path: Path,
+    bundle_path: Path | list[Path],
     output_dir: Path,
     asset_types_to_extract: set[str],
-    downgrade_options: SpineDowngradeOptions | None = None,
+    spine_options: SpineOptions | None = None,
     log: LogFunc = no_log,
 ) -> tuple[bool, str]:
     """
@@ -590,27 +617,34 @@ def process_asset_extraction(
     如果启用了Spine降级选项，将自动处理Spine 4.x到3.8的降级。
 
     Args:
-        bundle_path: 目标 Bundle 文件的路径。
+        bundle_path: 目标 Bundle 文件的路径，可以是单个 Path 或 Path 列表。
         output_dir: 提取资源的保存目录。
         asset_types_to_extract: 需要提取的资源类型集合 (如 {"Texture2D", "TextAsset"})。
-        downgrade_options: Spine资源降级的选项。
+        spine_options: Spine资源转换的选项。
         log: 日志记录函数。
 
     Returns:
         一个元组 (是否成功, 状态消息)。
     """
     try:
+        # 统一处理为列表
+        if isinstance(bundle_path, Path):
+            bundle_paths = [bundle_path]
+        else:
+            bundle_paths = bundle_path
+        
         log("\n" + "="*50)
-        log(t("log.extractor.starting_extraction", filename=bundle_path.name))
+        if len(bundle_paths) == 1:
+            log(t("log.extractor.starting_extraction", filename=bundle_paths[0].name))
+        else:
+            log(t("log.extractor.starting_extraction_num", num=len(bundle_paths)))
+            for bp in bundle_paths:
+                log(f"  - {bp.name}")
         log(t("log.extractor.extraction_types", types=', '.join(asset_types_to_extract)))
         log(f"{t('option.output_dir')}: {output_dir}")
 
-        env = load_bundle(bundle_path, log)
-        if not env:
-            return False, t("message.load_failed")
-
         output_dir.mkdir(parents=True, exist_ok=True)
-        downgrade_enabled = downgrade_options and downgrade_options.is_valid()
+        downgrade_enabled = spine_options and spine_options.is_valid()
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_extraction_dir = Path(temp_dir)
@@ -619,28 +653,37 @@ def process_asset_extraction(
             # --- 阶段 1: 统一提取所有相关资源到临时目录 ---
             log(f'\n--- {t("log.section.extract_to_temp")} ---')
             extraction_count = 0
-            for obj in env.objects:
-                if obj.type.name not in asset_types_to_extract:
+            
+            for bundle_file in bundle_paths:
+                env = load_bundle(bundle_file, log)
+                if not env:
                     continue
-                try:
-                    data = obj.read()
-                    resource_name = getattr(data, 'm_Name', None)
-                    if not resource_name:
-                        log(f"  > {t('log.extractor.skipping_unnamed', type=obj.type.name)}")
+                
+                for obj in env.objects:
+                    if obj.type.name not in asset_types_to_extract:
                         continue
+                    # 确保类型在白名单中
+                    if obj.type not in REPLACEABLE_ASSET_TYPES:
+                        continue
+                    try:
+                        data = obj.read()
+                        resource_name: str = getattr(data, 'm_Name', None)
+                        if not resource_name:
+                            log(f"  > {t('log.extractor.skipping_unnamed', type=obj.type.name)}")
+                            continue
 
-                    if obj.type == AssetType.TextAsset:
-                        dest_path = temp_extraction_dir / resource_name
-                        asset_bytes = data.m_Script.encode("utf-8", "surrogateescape")
-                        dest_path.write_bytes(asset_bytes)
-                    elif obj.type == AssetType.Texture2D:
-                        dest_path = temp_extraction_dir / f"{resource_name}.png"
-                        data.image.convert("RGBA").save(dest_path)
-                    
-                    log(f"  - {dest_path.name}")
-                    extraction_count += 1
-                except Exception as e:
-                    log(f"  ❌ {t('log.extractor.extraction_failed', name=getattr(data, 'm_Name', 'N/A'), error=e)}")
+                        if obj.type == AssetType.TextAsset:
+                            dest_path = temp_extraction_dir / resource_name
+                            asset_bytes = data.m_Script.encode("utf-8", "surrogateescape")
+                            dest_path.write_bytes(asset_bytes)
+                        elif obj.type == AssetType.Texture2D:
+                            dest_path = temp_extraction_dir / f"{resource_name}.png"
+                            data.image.convert("RGBA").save(dest_path)
+                        
+                        log(f"  - {dest_path.name}")
+                        extraction_count += 1
+                    except Exception as e:
+                        log(f"  ❌ {t('log.extractor.extraction_failed', name=getattr(data, 'm_Name', 'N/A'), error=e)}")
 
             if extraction_count == 0:
                 msg = t("message.extractor.no_assets_found")
@@ -678,9 +721,8 @@ def process_asset_extraction(
                     # 调用辅助函数处理该资产组
                     SpineUtils.handle_group_downgrade(
                         skel_path, atlas_path, output_dir,
-                        downgrade_options.skel_converter_path,
-                        downgrade_options.atlas_converter_path,
-                        downgrade_options.target_version,
+                        spine_options.converter_path,
+                        spine_options.target_version,
                         log
                     )
                 
@@ -704,7 +746,7 @@ def process_asset_extraction(
         return False, t("message.error_during_process", error=e)
 
 def _extract_assets_from_bundle(
-    env: UnityPy.Environment,
+    env: Env,
     asset_types_to_replace: set[str],
     key_func: KeyGeneratorFunc,
     spine_options: SpineOptions | None,
@@ -718,25 +760,30 @@ def _extract_assets_from_bundle(
     replace_all = "ALL" in asset_types_to_replace
 
     for obj in env.objects:
-        # 如果不是“ALL”模式，则只处理在指定集合中的类型
-        if not replace_all and obj.type.name not in asset_types_to_replace:
-            continue
-
         try:
             data = obj.read()
-            asset_key = key_func(obj, data)
+            
+            # 统一过滤：只提取可替换的资源类型
+            if obj.type not in REPLACEABLE_ASSET_TYPES:
+                continue
+            
+            # 如果不是"ALL"模式，则只处理在指定集合中的类型
+            if not replace_all and obj.type.name not in asset_types_to_replace:
+                continue
+
+            asset_key = key_func(obj)
             if asset_key is None or not getattr(data, 'm_Name', None):
                 continue
             
             content: AssetContent | None = None
-            resource_name = data.m_Name
+            resource_name: str = data.m_Name
 
             if obj.type == AssetType.Texture2D:
-                content = data.image
+                content: Image.Image = data.image
             elif obj.type == AssetType.TextAsset:
                 asset_bytes = data.m_Script.encode("utf-8", "surrogateescape")
                 if resource_name.lower().endswith('.skel'):
-                    content = SpineUtils.handle_skel_upgrade(
+                    content: bytes = SpineUtils.handle_skel_upgrade(
                         skel_bytes=asset_bytes,
                         resource_name=resource_name,
                         enabled=spine_options.enabled if spine_options else False,
@@ -745,15 +792,15 @@ def _extract_assets_from_bundle(
                         log=log
                     )
                 else:
-                    content = asset_bytes
+                    content: bytes = asset_bytes
             # 对于其他类型，如果处于“ALL”模式或该类型被明确请求，则复制原始数据
             elif replace_all or obj.type.name in asset_types_to_replace:
-                content = obj.get_raw_data()
+                content: bytes = obj.get_raw_data()
 
             if content is not None:
                 replacement_map[asset_key] = content
         except Exception as e:
-            log(f"  > ⚠️ {t('log.extractor.extraction_failed', name=getattr(obj.read(), 'm_Name', 'N/A'), error=e)}")
+            log(f"  > ⚠️ {t('log.extractor.extraction_failed', name=getattr(data, 'm_Name', 'N/A'), error=e)}")
 
     if replace_all:
         replacement_map["__mode__"] = {"ALL"}
@@ -766,7 +813,7 @@ def _migrate_bundle_assets(
     asset_types_to_replace: set[str],
     spine_options: SpineOptions | None = None,
     log: LogFunc = no_log,
-) -> tuple[UnityPy.Environment | None, int]:
+) -> tuple[Env | None, int]:
     """
     执行asset迁移的核心替换逻辑。
     asset_types_to_replace: 要替换的资源类型集合（如 {"Texture2D", "TextAsset", "Mesh"} 的子集 或 {"ALL"}）
@@ -787,8 +834,10 @@ def _migrate_bundle_assets(
     # 定义匹配策略
     strategies: list[tuple[str, KeyGeneratorFunc]] = [
         ('path_id', MATCH_STRATEGIES['path_id']),
-        ('container', MATCH_STRATEGIES['container']),
-        ('name_type', MATCH_STRATEGIES['name_type'])
+        ('cont_name_type', MATCH_STRATEGIES['cont_name_type']),
+        ('name_type', MATCH_STRATEGIES['name_type']),
+        # ('container', MATCH_STRATEGIES['container']),
+        # 因为多个Mesh可能共享同一个Container，所以这个策略很可能失效，因此不使用
     ]
 
     for name, key_func in strategies:
@@ -809,7 +858,7 @@ def _migrate_bundle_assets(
         # 3. 根据当前策略应用替换
         log(f'  > {t("log.migration.writing_to_new_bundle")}')
         
-        replacement_count, replaced_logs, _ = _apply_replacements(
+        replacement_count, replaced_logs, unmatched_keys = _apply_replacements(
             new_env, old_assets_map, key_func, log)
         
         # 4. 如果当前策略成功替换了至少一个资源，就结束
@@ -946,15 +995,18 @@ def process_batch_mod_update(
         log(t("log.status.processing_batch", current=current_progress, total=total_files, filename=filename))
 
         # 查找对应的新资源文件
-        new_bundle_path, find_message = find_new_bundle_path(
+        new_bundle_paths, find_message = find_new_bundle_path(
             old_mod_path, search_paths, log
         )
 
-        if not new_bundle_path:
+        if not new_bundle_paths:
             log(f'❌ {t("log.search.find_failed", message=find_message)}')
             fail_count += 1
             failed_tasks.append(f"{filename} - {t('log.search.find_failed', message=find_message)}")
             continue
+
+        # 使用第一个匹配的文件
+        new_bundle_path = new_bundle_paths[0]
 
         # 执行Mod更新处理
         success, process_message = process_mod_update(
@@ -990,9 +1042,59 @@ JP_FILENAME_TYPE_MAP = {
     "prefabs": "Prefab",
 }
 
+# 可替换的资源类型白名单
+# 这些是实际的资源类型，不应包括容器对象（如 AssetBundle）或元数据对象
+REPLACEABLE_ASSET_TYPES: set[AssetType] = {
+    # 纹理类
+    AssetType.Texture2D,
+    AssetType.Texture3D,
+    AssetType.Cubemap,
+    AssetType.RenderTexture,
+    AssetType.CustomRenderTexture,
+    AssetType.Sprite,
+    AssetType.SpriteAtlas,
+
+    # 文本和脚本类
+    AssetType.TextAsset,
+    AssetType.MonoBehaviour,
+    AssetType.MonoScript,
+
+    # 音频类
+    AssetType.AudioClip,
+
+    # 网格和材质类
+    AssetType.Mesh,
+    AssetType.Material,
+    AssetType.Shader,
+
+    # 动画类
+    AssetType.AnimationClip,
+    AssetType.Animator,
+    AssetType.AnimatorController,
+    AssetType.RuntimeAnimatorController,
+    AssetType.Avatar,
+    AssetType.AvatarMask,
+
+    # 字体类
+    AssetType.Font,
+
+    # 视频类
+    AssetType.VideoClip,
+
+    # 地形类
+    AssetType.TerrainData,
+
+    # 其他资源类
+    AssetType.PhysicMaterial,
+    AssetType.ComputeShader,
+    AssetType.Flare,
+    AssetType.LensFlare,
+}
+
 def _get_asset_types_from_jp_filenames(jp_paths: list[Path]) -> set[str]:
     """
     分析日服bundle文件名列表，以确定它们包含的资源类型。
+    只返回可替换的资源类型。
     """
     asset_types = set()
     # 用于查找类型部分的正则表达式，例如 "-textures-"
@@ -1004,7 +1106,13 @@ def _get_asset_types_from_jp_filenames(jp_paths: list[Path]) -> set[str]:
             type_key = match.group(1)
             asset_type_name = JP_FILENAME_TYPE_MAP.get(type_key)
             if asset_type_name:
-                asset_types.add(asset_type_name)
+                # 只添加在白名单中的类型
+                try:
+                    asset_type = AssetType[asset_type_name]
+                    if asset_type in REPLACEABLE_ASSET_TYPES:
+                        asset_types.add(asset_type_name)
+                except KeyError:
+                    pass
 
     return asset_types
 
@@ -1089,7 +1197,8 @@ def process_jp_to_global_conversion(
         # 1. 从所有日服包中构建一个完整的"替换清单"
         log(f'\n--- {t("log.section.extracting_from_jp")} ---')
         replacement_map: dict[AssetKey, AssetContent] = {}
-        key_func = MATCH_STRATEGIES['container']
+        strategy_name = 'cont_name_type'
+        key_func = MATCH_STRATEGIES[strategy_name]
         
         # 根据日服文件名动态确定要提取的资源类型
         asset_types = _get_asset_types_from_jp_filenames(jp_bundle_paths)
@@ -1129,7 +1238,7 @@ def process_jp_to_global_conversion(
             log(f"  > ⚠️ {t('log.jp_convert.no_assets_replaced')}")
             return False, t("message.jp_convert.no_assets_matched")
             
-        log(f"\n✅ {t('log.migration.strategy_success', name='container', count=replacement_count)}:")
+        log(f"\n✅ {t('log.migration.strategy_success', name=strategy_name, count=replacement_count)}:")
         for item in replaced_logs:
             log(f"  - {item}")
         
@@ -1191,7 +1300,8 @@ def process_global_to_jp_conversion(
             return False, t("message.jp_convert.load_global_source_failed")
         
         log(f'\n--- {t("log.section.extracting_from_global")} ---')
-        key_func = MATCH_STRATEGIES['container']
+        strategy_name = 'cont_name_type'
+        key_func = MATCH_STRATEGIES[strategy_name]
 
         # 根据日服模板文件名确定要提取哪些类型的资源
         asset_types = _get_asset_types_from_jp_filenames(jp_template_paths)
@@ -1225,7 +1335,7 @@ def process_global_to_jp_conversion(
             )
             
             if replacement_count > 0:
-                log(f"\n✅ {t('log.migration.strategy_success', name='container', count=replacement_count)}:")
+                log(f"\n✅ {t('log.migration.strategy_success', name=strategy_name, count=replacement_count)}:")
                 for item in replaced_logs:
                     log(f"  - {item}")
                 
