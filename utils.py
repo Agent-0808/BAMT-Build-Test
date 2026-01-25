@@ -10,16 +10,21 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
-from SpineAtlas import Atlas, ReadAtlasFile, AtlasScale
 
 from i18n import i18n_manager, t
 
 def get_version() -> str:
     """从 pyproject.toml 读取版本号"""
-    pyproject_path = Path("pyproject.toml")
-    import toml
-    data = toml.load(pyproject_path)
-    return data.get("project", {}).get("version")
+    try:
+        from _version import __version__
+        print(__version__)
+    except ImportError:
+        # 如果在本地开发环境没有这个文件，回退到读取 pyproject.toml 或硬编码
+        import toml
+        with open("pyproject.toml", 'r', encoding='utf-8') as f:
+            data = toml.load(f)
+            __version__ = data["project"]["version"] + "-dev"
+    return __version__
 
 def no_log(message):
     """A dummy logger that does nothing."""
@@ -277,7 +282,8 @@ def get_environment_info():
 
     try:
         version = get_version()
-    except:
+    except Exception as e:
+        print(e)
         version = "Unknown"
 
     import platform
@@ -375,6 +381,7 @@ def is_bundle_file(source: Path | bytes, log = no_log) -> bool:
 
 class SpineUtils:
     """Spine 资源转换工具类，支持版本升级和降级。"""
+    from SpineAtlas import Atlas, ReadAtlasFile, AtlasScale
 
     @staticmethod
     def get_skel_version(source: Path | bytes, log: LogFunc = no_log) -> str | None:

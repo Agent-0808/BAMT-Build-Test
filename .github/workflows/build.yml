@@ -29,31 +29,32 @@ jobs:
         with:
           version: "latest"
 
-      # --- 新增步骤：提取版本号 ---
-      - name: Extract Version from pyproject.toml
+      - name: Install Dependencies
+        run: uv export --no-hashes -o requirements.txt && pip install -r requirements.txt
+
+      # 【新增步骤】从 pyproject.toml 提取版本号并生成 _version.py
+      - name: Extract Version and Generate Meta
         id: get_version
         shell: python
         run: |
-          import tomllib
           import os
-          
-          # 读取 pyproject.toml
+          import tomllib
+
+          # 1. 读取 pyproject.toml
           with open("pyproject.toml", "rb") as f:
               data = tomllib.load(f)
+              version = data["project"]["version"]
+
+          print(f"Detected version: {version}")
+
+          # 2. 生成 _version.py 供 Python 代码引用
+          with open("_version.py", "w", encoding="utf-8") as f:
+              f.write(f'__version__ = "{version}"\n')
           
-          # 获取版本号 (假设在 [project] 表下)
-          version = data.get("project", {}).get("version", "0.8.0.8")
-          
-          # 如果 Nuitka 严格要求四位版本号 (x.x.x.x)，可以在这里处理，
-          # 但通常 Nuitka 能够处理 '0.1.0' 这种格式。
-          
-          # 输出到 GitHub Actions
+          # 3. 将版本号设置到 GitHub Action 的输出变量 (Output)
+          # 这样后续步骤可以通过 ${{ steps.get_version.outputs.version }} 引用
           with open(os.environ['GITHUB_OUTPUT'], 'a') as fh:
               print(f"version={version}", file=fh)
-      # ---------------------------
-
-      - name: Install Dependencies
-        run: uv export --no-hashes -o requirements.txt && pip install -r requirements.txt
 
       - name: Build Executable with Nuitka
         uses: Nuitka/Nuitka-Action@main
@@ -63,17 +64,16 @@ jobs:
           mode: onefile
           windows-icon-from-ico: assets/eligma.ico
 
-          # --- 新增元数据配置 ---
-          # 引用上一步提取的版本号
+          # --- 元数据配置 ---
           product-version: ${{ steps.get_version.outputs.version }}
           file-version: ${{ steps.get_version.outputs.version }}
-          
-          # 其他元数据 (请根据实际情况修改)
+          # 元数据
           product-name: "BA Modding Toolkit"
           file-description: "A toolkit for Blue Archive modding"
-          company-name: "My Organization or Name"
-          copyright: "Copyright © 2024"
-          trademarks: "Blue Archive is a trademark of NEXON Games"
+          company-name: "Agent-0808"
+          copyright: "Copyright ©2025-2026 Agent-0808. Licensed under GPLv3."
+          trademarks: "Blue Archive is a trademark of NEXON Games Co., Ltd. This tool is unofficial."
+          onefile-windows-splash-screen-image: assets/title.png
 
           low-memory: true
           # 经测试使用mingw64可以避免堆内存问题
@@ -87,7 +87,7 @@ jobs:
             UnityPy
             archspec
           include-data-dir: assets=assets
-          include-data-files: pyproject.toml=pyproject.toml
+          # include-data-files: pyproject.toml=pyproject.toml
           windows-console-mode: disable
           output-dir: build
           output-file: "BA-Modding-Toolkit.exe"
