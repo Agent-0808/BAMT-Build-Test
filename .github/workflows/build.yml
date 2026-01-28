@@ -86,7 +86,7 @@ jobs:
             ba_modding_toolkit
             UnityPy
             archspec
-          include-data-dir: assets=assets
+          # include-data-dir: assets=assets
           windows-console-mode: disable
           output-dir: build
           output-file: "BA-Modding-Toolkit.exe"
