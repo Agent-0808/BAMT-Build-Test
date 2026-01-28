@@ -31,15 +31,20 @@ class App(tk.Frame):
         self.master.title(t("ui.app_title"))
         self.master.geometry("600x789")
         
-        # 优先检查 sys.argv[0] (可执行文件) 所在目录的 assets
-        # 这适用于 Nuitka/PyInstaller 打包后的环境以及从根目录运行的情况
-        exe_path = Path(sys.argv[0]).parent
-        if (exe_path / "assets").exists():
-            self.root_path = exe_path
+        # 设置 root_path
+        if hasattr(sys, 'frozen'):
+            # Nuitka 打包后的环境：资源文件会被解压到与代码相同的目录
+            self.root_path = Path(__file__).parent
         else:
-            # 开发环境：从当前文件向上查找项目根目录
-            # src/ba_modding_toolkit/gui/app.py -> root
-            self.root_path = Path(__file__).parents[3]
+            # 优先检查 sys.argv[0] (可执行文件) 所在目录的 assets
+            # 这适用于从根目录运行的情况
+            exe_path = Path(sys.argv[0]).parent
+            if (exe_path / "assets").exists():
+                self.root_path = exe_path
+            else:
+                # 开发环境：从当前文件向上查找项目根目录
+                # src/ba_modding_toolkit/gui/app.py -> root
+                self.root_path = Path(__file__).parents[3]
 
         # 设置窗口图标
         icon_path = self.root_path / "assets" / "eligma.ico"

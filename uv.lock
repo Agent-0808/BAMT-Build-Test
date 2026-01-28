@@ -49,8 +49,8 @@ wheels = [
 
 [[package]]
 name = "ba-modding-toolkit"
-version = "1.0.0"
-source = { virtual = "." }
+version = "1.0.1"
+source = { editable = "." }
 dependencies = [
     { name = "pillow" },
     { name = "spineatlas" },
