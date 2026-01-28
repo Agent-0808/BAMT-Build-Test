@@ -33,8 +33,20 @@ class App(tk.Frame):
         
         # 设置 root_path
         if hasattr(sys, 'frozen'):
-            # Nuitka 打包后的环境：资源文件会被解压到与代码相同的目录
-            self.root_path = Path(__file__).parent
+            # Nuitka 打包后的环境
+            # onefile 模式下，资源文件会被解压到临时目录的 ba_modding_toolkit 目录
+            # 需要从 __file__ 向上查找 ba_modding_toolkit 目录
+            current_path = Path(__file__).parent
+            
+            # 向上查找 ba_modding_toolkit 目录（包含 assets 子目录）
+            for _ in range(5):
+                if (current_path / "assets").exists():
+                    self.root_path = current_path
+                    break
+                current_path = current_path.parent
+            else:
+                # 如果找不到，使用 sys.executable 所在目录
+                self.root_path = Path(sys.executable).parent
         else:
             # 优先检查 sys.argv[0] (可执行文件) 所在目录的 assets
             # 这适用于从根目录运行的情况

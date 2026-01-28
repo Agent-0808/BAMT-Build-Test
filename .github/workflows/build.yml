@@ -88,8 +88,8 @@ jobs:
             archspec
           # 包含资源目录
           include-data-dir: |
-            src/ba_modding_toolkit/assets=assets
-            src/ba_modding_toolkit/locales=locales
+            src/ba_modding_toolkit/assets=ba_modding_toolkit/assets
+            src/ba_modding_toolkit/locales=ba_modding_toolkit/locales
           windows-console-mode: disable
           output-dir: build
           output-file: "BA-Modding-Toolkit.exe"
