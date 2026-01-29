@@ -33,34 +33,19 @@ class App(tk.Frame):
         
         # 设置 root_path
         if hasattr(sys, 'frozen'):
-            # Nuitka 打包后的环境
-            # onefile 模式下，资源文件会被解压到临时目录的 ba_modding_toolkit 目录
-            # 需要从 __file__ 向上查找 ba_modding_toolkit 目录
-            current_path = Path(__file__).parent
-            
-            # 向上查找 ba_modding_toolkit 目录（包含 assets 子目录）
-            for _ in range(5):
-                if (current_path / "assets").exists():
-                    self.root_path = current_path
-                    break
-                current_path = current_path.parent
-            else:
-                # 如果找不到，使用 sys.executable 所在目录
-                self.root_path = Path(sys.executable).parent
+            # 打包环境：使用 exe 同级目录
+            # 根据 build.yml 配置，资源文件被打包到 ba_modding_toolkit 子目录
+            self.root_path = Path(sys.executable).parent / "ba_modding_toolkit"
         else:
-            # 优先检查 sys.argv[0] (可执行文件) 所在目录的 assets
-            # 这适用于从根目录运行的情况
-            exe_path = Path(sys.argv[0]).parent
-            if (exe_path / "assets").exists():
-                self.root_path = exe_path
-            else:
-                # 开发环境：从当前文件向上查找项目根目录
-                # src/ba_modding_toolkit/gui/app.py -> root
-                self.root_path = Path(__file__).parents[3]
+            # 开发环境：src/ba_modding_toolkit/gui/app.py -> src/ba_modding_toolkit/
+            self.root_path = Path(__file__).parents[1]
 
         # 设置窗口图标
+        print(f"root_path: {self.root_path}")
         icon_path = self.root_path / "assets" / "eligma.ico"
+        print(f"icon_path: {icon_path}")
         if icon_path.exists():
+            print(f"Setting icon to {icon_path}")
             self.master.iconbitmap(icon_path)
 
     def _set_default_values(self):

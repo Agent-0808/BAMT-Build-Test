@@ -90,7 +90,7 @@ jobs:
           include-data-dir: |
             src/ba_modding_toolkit/assets=ba_modding_toolkit/assets
             src/ba_modding_toolkit/locales=ba_modding_toolkit/locales
-          windows-console-mode: disable
+          # windows-console-mode: disable
           output-dir: build
           output-file: "BA-Modding-Toolkit.exe"
           assume-yes-for-downloads: true
