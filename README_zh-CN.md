@@ -20,7 +20,7 @@
 
 ## 介绍
 
-![不正常的客户端](assets/help/abnormal-zh.png)
+![不正常的客户端](docs/help/abnormal-zh.png)
 
 - 从网上下载的 mod，替换了游戏目录下的对应文件，进游戏却显示“不正常的用戶端”，无法登录？
 - 从网上下载了发布于很久以前的 mod，但文件名与最新的不同？即使替换后进入游戏，对应的角色图像没有变化/完全不显示/游戏卡死？
@@ -62,7 +62,7 @@ BA Modding Toolkit 可以帮助您解决以上问题，完全傻瓜式操作，�
 - 即使不配置 `SpineSkeletonDataConverter.exe`，也可以正常使用本程序来更新*使用与当前版本（4.2.xx）兼容的Spine文件*的 Mod。
   - 如果您想要更新的Mod制作于2025年及之后，则其已经使用了Spine 4.2格式，无需配置该选项也可正常更新。
 
-![How to update a mod with BAMT GUI](assets/help/gui-help-mod-update-zhcn.png)
+![How to update a mod with BAMT GUI](docs/help/gui-help-mod-update-zhcn.png)
 
 ### Mod 更新
 #### 单个更新
@@ -322,3 +322,8 @@ BA-Modding-Toolkit/
 - [BA-characters-internal-id](https://github.com/Agent-0808/BA-characters-internal-id) ：查询角色名称与内部文件ID之间的对应关系
 - [BA-AD](https://github.com/Deathemonic/BA-AD)：下载原版游戏资源
 - [SpineViewer](https://github.com/ww-rm/SpineViewer)：预览Spine动画文件
+
+### 免责声明 / Disclaimer
+<sub>
+BA Modding Toolkit is a personal project by Agent-0808 and is not affiliated with, endorsed by, or connected to NEXON Games Co., Ltd., NEXON Korea Corp., Yostar, Inc., or any of their subsidiaries. All game assets, characters, music, and related intellectual property are the trademarks or registered trademarks of their respective owners. They are used in this tool for educational and interoperability purposes only (fair use). Please respect the Terms of Service of the official game. Do not use this tool for cheating or malicious activities.
+</sub>

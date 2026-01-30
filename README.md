@@ -22,7 +22,7 @@ Supports Steam version (PC) and other versions (Global/JP server, PC/Android/iOS
 
 ## Introduction
 
-![Abnormal Client](assets/help/abnormal-en.png)
+![Abnormal Client](docs/help/abnormal-en.png)
 
 - Downloaded a mod from the internet, replaced the corresponding file in the game directory, but the game shows "Abnormal Client" and cannot login?
 - Downloaded a mod released a long time ago, but the filename is different from the latest version? Even after replacement, the character image doesn't change/doesn't display at all/game freezes?
@@ -64,7 +64,7 @@ The program contains multiple functional tabs:
 - Even without configuring `SpineSkeletonDataConverter.exe`, you can still use this program normally to update mods that *use Spine files compatible with the current version (4.2.xx)*.
     - If the mod you want to update was created in 2025 or later, it already uses Spine 4.2 format and can be updated normally without configuring this option.
 
-![How to update a mod with BAMT GUI](assets/help/gui-help-mod-update-en.png)
+![How to update a mod with BAMT GUI](docs/help/gui-help-mod-update-en.png)
 
 ### Mod 更新 (Mod Update)
 #### 单个更新 (Single Update)
@@ -321,3 +321,8 @@ Some useful related repositories:
 - [BA-characters-internal-id](https://github.com/Agent-0808/BA-characters-internal-id) ：Search for character names and internal file IDs
 - [BA-AD](https://github.com/Deathemonic/BA-AD)：Download original game resources
 - [SpineViewer](https://github.com/ww-rm/SpineViewer)：Preview Spine animation files
+
+### Disclaimer
+<sub>
+BA Modding Toolkit is a personal project by Agent-0808 and is not affiliated with, endorsed by, or connected to NEXON Games Co., Ltd., NEXON Korea Corp., Yostar, Inc., or any of their subsidiaries. All game assets, characters, music, and related intellectual property are the trademarks or registered trademarks of their respective owners. They are used in this tool for educational and interoperability purposes only (fair use). Please respect the Terms of Service of the official game. Do not use this tool for cheating or malicious activities.
+</sub>

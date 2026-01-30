@@ -5,6 +5,7 @@ tools/
 test/
 testbundle/
 old/
+SpineConverter/
 
 locales/
 src/ba_modding_toolkit/locales/tmp/
@@ -14,6 +15,7 @@ src/ba_modding_toolkit/locales/*TMP.json
 .vscode/
 .trae/
 __pycache__/
+
 build/
 dist/
 *.pyc
@@ -21,7 +23,6 @@ dist/
 *.pyd
 *.egg-info/
 
-SpineConverter/
 *.pdn
 *.exe
 *.lnk
