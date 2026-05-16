@@ -148,7 +148,7 @@ jobs:
           # 包含代码依赖包
           include-package: |
             ba_modding_toolkit
-          #  UnityPy
+            UnityPy.resources
           # 包含依赖包的数据文件
           include-package-data: |
             ba_modding_toolkit
