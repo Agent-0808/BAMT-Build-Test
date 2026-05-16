@@ -12,6 +12,30 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - name: mingw64
+            mingw64: true
+            clang: false
+            zig: false
+            msvc: ""
+          - name: msvc
+            mingw64: false
+            clang: false
+            zig: false
+            msvc: "latest"
+          - name: clang
+            mingw64: false
+            clang: true
+            zig: false
+            msvc: ""
+          - name: zig
+            mingw64: false
+            clang: false
+            zig: true
+            msvc: ""
 
     steps:
       - name: Checkout Code
@@ -80,7 +104,7 @@ jobs:
               print(f"version={version}", file=fh)
               print(f"file_version={file_version}", file=fh)
 
-      - name: Build Executable with Nuitka
+      - name: Build Executable with Nuitka (${{ matrix.compiler.name }})
         uses: Nuitka/Nuitka-Action@main
         with:
           nuitka-version: main
@@ -99,8 +123,11 @@ jobs:
           trademarks: "Blue Archive ©NEXON Games Co., Ltd. & Yostar, Inc. This tool is unofficial and not endorsed by them."
 
           low-memory: true
-          # 经测试使用mingw64可以避免堆内存问题
-          mingw64: true
+          # 编译器选择 (通过 matrix 配置)
+          mingw64: ${{ matrix.compiler.mingw64 }}
+          clang: ${{ matrix.compiler.clang }}
+          zig: ${{ matrix.compiler.zig }}
+          msvc: ${{ matrix.compiler.msvc }}
           lto: "no"
           enable-plugins: tk-inter
           # 包含代码依赖包
@@ -117,7 +144,7 @@ jobs:
           include-data-dir: |
             src/ba_modding_toolkit/assets=ba_modding_toolkit/assets
             src/ba_modding_toolkit/locales=ba_modding_toolkit/locales
-          windows-console-mode: disable
+          # windows-console-mode: disable
           output-dir: build
           output-file: "BA-Modding-Toolkit.exe"
           assume-yes-for-downloads: true
@@ -134,7 +161,7 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BA-Modding-Toolkit-Windows-Build
+          name: BA-Modding-Toolkit-Windows-${{ matrix.compiler.name }}
           path: publish/
 
       # 打包成 Zip
@@ -142,8 +169,9 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           $tag_name = "${{ github.ref_name }}"
+          $compiler = "${{ matrix.compiler.name }}"
           cd publish
-          Compress-Archive -Path * -DestinationPath "../BA-Modding-Toolkit-$tag_name.zip"
+          Compress-Archive -Path * -DestinationPath "../BA-Modding-Toolkit-$tag_name-$compiler.zip"
         shell: powershell
 
       # 上传 Zip
@@ -151,4 +179,4 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          files: BA-Modding-Toolkit-${{ github.ref_name }}.zip
+          files: BA-Modding-Toolkit-${{ github.ref_name }}-${{ matrix.compiler.name }}.zip
