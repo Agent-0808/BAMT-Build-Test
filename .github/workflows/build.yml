@@ -53,6 +53,21 @@ jobs:
         with:
           version: "latest"
 
+      - name: Increase Swap
+        shell: powershell
+        run: |
+          # 禁用系统管理的页面文件，手动设置大小
+          $pagefile = Get-WmiObject Win32_PageFileSetting
+          if ($pagefile) {
+              $pagefile.InitialSize = 12288
+              $pagefile.MaximumSize = 12288
+              $pagefile.Put()
+          } else {
+              # 如果没有找到设置，强制创建（针对某些镜像环境）
+              Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'PagingFiles' -Value "C:\pagefile.sys 12288 12288"
+          }
+          Write-Host "Virtual Memory (Swap) increased to 12GB."
+
       - name: Install Dependencies
         run: uv export --no-hashes -o requirements.txt && pip install -r requirements.txt
 
@@ -133,13 +148,13 @@ jobs:
           # 包含代码依赖包
           include-package: |
             ba_modding_toolkit
-            UnityPy
+          #  UnityPy
           # 包含依赖包的数据文件
           include-package-data: |
             ba_modding_toolkit
             UnityPy
             archspec
-          nofollow-import-to: UnityPy.classes.generated  
+          # nofollow-import-to: UnityPy.classes.generated  
           # 包含资源目录
           include-data-dir: |
             src/ba_modding_toolkit/assets=ba_modding_toolkit/assets
