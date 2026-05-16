@@ -1,4 +1,4 @@
-# ui/components.py
+# gui/components.py
 
 import tkinter as tk
 import ttkbootstrap as tb
@@ -8,6 +8,7 @@ from typing import Callable, Any
 
 from .utils import select_file, select_directory
 from ..i18n import t
+from ..naming import parse_filename
 
 # --- 日志管理类 ---
 class Logger:
@@ -49,53 +50,23 @@ class Logger:
 # --- 主题与颜色管理 ---
 
 class Theme:
-    """集中管理应用的所有颜色，确保UI风格统一。"""
+    """集中管理原生Tkinter组件的颜色和字体
+        不包含ttkbootstrap组件"""
     # 背景色
-    WINDOW_BG = '#f0f2f5'
-    FRAME_BG = '#ffffff'
     INPUT_BG = '#ecf0f1'
-    MUTED_BG = '#e9ecef' # 用于拖放区等不活跃背景
 
     # 文本颜色
-    TEXT_TITLE = '#080808'
     TEXT_NORMAL = '#34495e'
-    TEXT_LIGHT = '#ffffff'
-    
-    # 按钮颜色 (背景/前景)
-    BUTTON_PRIMARY_BG = '#3498db'
-    BUTTON_SECONDARY_BG = '#9b59b6'
-    BUTTON_ACCENT_BG = '#8e44ad'
-    BUTTON_SUCCESS_BG = '#27ae60'
-    BUTTON_WARNING_BG = '#f39c12'
-    BUTTON_DANGER_BG = '#e74c3c'
-    BUTTON_FG = TEXT_LIGHT
-
-    # 状态颜色 (用于文本提示)
-    COLOR_SUCCESS = '#27ae60'
-    COLOR_WARNING = '#e67e22'
-    COLOR_ERROR = '#e74c3c'
 
     # 特殊组件颜色
     LOG_BG = '#2c3e50'
     LOG_FG = '#ecf0f1'
     LOG_SELECTED = '#3a5a7a'
-    STATUS_BAR_BG = '#34495e'
-    STATUS_BAR_FG = '#ecf0f1'
-    MODE_SWITCHER_ACTIVE = '#e0e0e0'
-    
-    # 侧边栏颜色
-    SIDEBAR_BG = '#2c3e50'
-    SIDEBAR_BUTTON_BG = '#34495e'
-    SIDEBAR_BUTTON_FG = '#ecf0f1'
-    SIDEBAR_BUTTON_ACTIVE_BG = '#3498db'
-    SIDEBAR_BUTTON_ACTIVE_FG = '#ffffff'
 
     # 字体
     DROP_ZONE_FONT = ("Microsoft YaHei", 9)
     INPUT_FONT = ("Microsoft YaHei", 9)
     STATUS_BAR_FONT = ("Microsoft YaHei", 9)
-    BUTTON_FONT = ("Segoe UI", 10, "bold")
-    SIDEBAR_FONT = ("Segoe UI", 9)
     LOG_FONT = ("Consolas", 9)
     TOOLTIP_FONT = ("Microsoft YaHei", 9)
     
@@ -200,99 +171,6 @@ class UIComponents:
         return checkbutton
 
     @staticmethod
-    def _debounce_wraplength(event: tk.Event) -> None:
-        """
-        防抖处理函数，用于更新标签的 wraplength。
-        只在窗口大小调整停止后执行。
-        """
-        widget = event.widget
-        # 如果之前已经设置了定时器，先取消它
-        if hasattr(widget, "_debounce_timer"):
-            widget.after_cancel(widget._debounce_timer)
-        
-        # 设置一个新的定时器，在指定时间后执行更新操作
-        widget._debounce_timer = widget.after(500, lambda: widget.config(wraplength=widget.winfo_width() - 10))
-
-    @staticmethod
-    def create_drop_zone(parent, title, drop_cmd, browse_cmd, label_text, button_text, search_path_var=None, clear_cmd: Callable[[], None] | None = None):
-        """
-        创建通用的拖放区域组件
-        
-        Args:
-            parent: 父组件
-            title: 标题
-            drop_cmd: 拖放回调
-            browse_cmd: 浏览按钮回调
-            label_text: 初始提示文本
-            button_text: 浏览按钮文本
-            search_path_var: (可选) 搜索路径变量
-            clear_cmd: (可选) 清除按钮回调。点击清除按钮时，UI会自动恢复初始状态，并调用此函数清理外部变量。
-        """
-        frame = tb.Labelframe(parent, text=title, padding=(15, 12))
-        frame.pack(fill=tk.X, pady=(0, 5))
-
-        # 如果提供了 search_path_var，则在拖放区上方添加查找路径输入框
-        if search_path_var is not None:
-            search_frame = tb.Frame(frame)
-            search_frame.pack(fill=tk.X, pady=(0, 8))
-            tb.Label(search_frame, text=t("ui.label.search_path")).pack(side=tk.LEFT, padx=(0,5))
-            UIComponents.create_textbox_entry(
-                search_frame, 
-                textvariable=search_path_var,
-                placeholder_text=t("ui.label.game_resource_dir"),
-                readonly=True
-            ).pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-        # 创建显示区域 Label
-        drop_zone = tb.Label(frame, text=label_text, relief="sunken", anchor="center", justify="center", padding=10, font=Theme.DROP_ZONE_FONT, bootstyle="inverse-light")
-        drop_zone.pack(fill=tk.X, pady=(0, 8))
-        drop_zone.drop_target_register(DND_FILES)
-        drop_zone.dnd_bind('<<Drop>>', drop_cmd)
-        drop_zone.bind('<Configure>', UIComponents._debounce_wraplength)
-
-        # 按钮容器 (用于并排显示浏览和清除按钮)
-        btn_frame = tb.Frame(frame)
-        btn_frame.pack(anchor=tk.CENTER)
-
-        # 浏览按钮
-        UIComponents.create_button(btn_frame, button_text, browse_cmd, bootstyle="primary", style="short").pack(side=tk.LEFT, padx=(0, 5))
-
-        # 清除逻辑
-        def _handle_clear():
-            # 1. 恢复 UI 至初始状态 (文本、背景、字体颜色)
-            drop_zone.config(text=label_text, bootstyle="inverse-light")
-            # 2. 调用外部清理逻辑 (如果存在)
-            if clear_cmd:
-                clear_cmd()
-
-        # 清除按钮
-        UIComponents.create_button(btn_frame, t("action.clear"), _handle_clear, bootstyle="warning", style="short").pack(side=tk.LEFT)
-
-        return frame, drop_zone
-
-    @staticmethod
-    def create_file_drop_zone(parent, title, drop_cmd, browse_cmd, search_path_var=None, clear_cmd: Callable[[], None] | None = None, label_text: str | None = None):
-        """创建文件拖放区域"""
-        return UIComponents.create_drop_zone(
-            parent, title, drop_cmd, browse_cmd, 
-            label_text if label_text is not None else t("ui.drop_zone.file_hint"), 
-            t("action.browse_file"),
-            search_path_var,
-            clear_cmd=clear_cmd
-        )
-
-    @staticmethod
-    def create_folder_drop_zone(parent, title, drop_cmd, browse_cmd, clear_cmd: Callable[[], None] | None = None, label_text: str | None = None):
-        """创建文件夹拖放区域"""
-        return UIComponents.create_drop_zone(
-            parent, title, drop_cmd, browse_cmd,
-            label_text if label_text is not None else t("ui.drop_zone.folder_hint"),
-            t("action.browse_folder"),
-            search_path_var=None,
-            clear_cmd=clear_cmd
-        )
-
-    @staticmethod
     def create_path_entry(parent, title, textvariable, select_cmd, open_cmd=None, placeholder_text=None, open_button=True):
         """
         创建路径输入框组件
@@ -392,6 +270,194 @@ class UIComponents:
         )
         Tooltip(label, text)
         return label
+
+class DropZone(tb.Labelframe):
+    """拖放区域组件，支持多文件拖放"""
+
+    def __init__(
+        self, parent,
+        title: str, placeholder_text: str,
+        on_files_selected: Callable[[list[Path] | Path], None] | None = None,
+        filetypes: list[tuple[str, str]] | None = None,
+        search_path_var=None,
+        clear_cmd: Callable[[], None] | None = None,
+        allow_folder: bool = False,
+        allow_multiple: bool = True,
+        logger=None,
+        **kwargs
+    ):
+        super().__init__(parent, text=title, padding=(15, 12), **kwargs)
+        self.pack(fill=tk.X, pady=(0, 5))
+        
+        self.placeholder_text = placeholder_text
+        self._on_files_selected = on_files_selected
+        self._clear_cmd = clear_cmd
+        self._filetypes = filetypes
+        self._allow_folder = allow_folder
+        self._allow_multiple = allow_multiple
+        self._logger = logger
+        self._paths: list[Path] = []
+
+        if search_path_var is not None:
+            search_frame = tb.Frame(self)
+            search_frame.pack(fill=tk.X, pady=(0, 8))
+            tb.Label(search_frame, text=t("ui.label.search_path")).pack(side=tk.LEFT, padx=(0, 5))
+            UIComponents.create_textbox_entry(
+                search_frame,
+                textvariable=search_path_var,
+                placeholder_text=t("ui.label.game_resource_dir"),
+                readonly=True
+            ).pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        self.label = tb.Label(
+            self, text=placeholder_text,
+            relief="sunken",
+            anchor="center",
+            justify="center",
+            padding=10,
+            font=Theme.DROP_ZONE_FONT,
+            bootstyle="inverse-light"
+        )
+        self.label.pack(fill=tk.X, pady=(0, 8))
+        self.label.drop_target_register(DND_FILES)
+        self.label.dnd_bind('<<Drop>>', self._handle_drop)
+        self.label.bind('<Configure>', self._debounce_wraplength)
+
+        btn_frame = tb.Frame(self)
+        btn_frame.pack(anchor=tk.CENTER)
+
+        button_text = t("action.browse_folder") if allow_folder else t("action.browse_file")
+        UIComponents.create_button(btn_frame, button_text, self._handle_browse, bootstyle="primary", style="short").pack(side=tk.LEFT, padx=(0, 5))
+
+        UIComponents.create_button(btn_frame, t("action.clear"), self.clear, bootstyle="warning", style="short").pack(side=tk.LEFT)
+
+    @property
+    def paths(self) -> list[Path]:
+        """当前选中的路径列表"""
+        return self._paths
+
+    @property
+    def path(self) -> Path | None:
+        """兼容旧接口，返回第一个路径"""
+        return self._paths[0] if self._paths else None
+
+    def set_files(self, paths: list[Path] | Path) -> None:
+        """外部设置文件列表，支持单Path或Path列表"""
+        # 统一转换为列表
+        if isinstance(paths, Path):
+            paths = [paths]
+        
+        # 当不允许多文件时，检查路径数量
+        if not self._allow_multiple and len(paths) > 1:
+            raise ValueError(f"DropZone does not allow multiple files, but got {len(paths)} paths")
+        
+        self._paths = paths
+        if paths:
+            self._update_display()
+
+    def _update_display(self) -> None:
+        """根据当前文件列表更新 UI 显示"""
+        if not self._paths:
+            return
+        
+        if self._allow_multiple:
+            parsed = parse_filename(self._paths[0].name)
+            res_types = [parse_filename(p.name).res_type or "base" for p in self._paths]
+            type_str = ", ".join(sorted(set(res_types)))
+            ui_text = f"{parsed.core}\n({t('ui.drop_zone.contains', count=len(self._paths), types=type_str)})"
+            self.set_success(ui_text)
+        else:
+            self.set_success(self._paths[0].name)
+
+    def set_success(self, text: str | None = None) -> None:
+        """设置成功状态（绿色）"""
+        self.label.config(text=text, bootstyle="success")
+
+    def set_warning(self, text: str | None = None) -> None:
+        """设置警告状态（黄色）"""
+        self.label.config(text=text, bootstyle="warning")
+
+    def set_error(self, text: str | None = None) -> None:
+        """设置错误状态（红色）"""
+        self.label.config(text=text, bootstyle="danger")
+
+    def set_searching(self, text: str | None = None) -> None:
+        """设置搜索中状态"""
+        self.label.config(text=text or t("ui.drop_zone.searching"), bootstyle="warning")
+
+    def clear(self) -> None:
+        """清除状态，恢复初始状态，并调用外部清理回调"""
+        self._paths = []
+        self.label.config(text=self.placeholder_text, bootstyle="inverse-light")
+        if self._clear_cmd:
+            self._clear_cmd()
+
+    def _handle_drop(self, event: tk.Event) -> None:
+        """内部处理拖放事件，支持多文件和文件夹"""
+        raw_paths = event.widget.tk.splitlist(event.data)
+        paths_to_add = []
+        
+        for p_str in raw_paths:
+            path = Path(p_str.strip('{}'))
+            if self._allow_folder and path.is_dir():
+                paths_to_add.append(path)
+            elif path.is_file() and path.suffix == '.bundle':
+                paths_to_add.append(path)
+        
+        if not paths_to_add:
+            return
+        
+        if not self._allow_multiple and len(paths_to_add) > 1:
+            self.clear()
+            self.set_warning(t("ui.drop_zone.multiple_files_rejected"))
+            return
+        
+        self._set_files(paths_to_add[:1] if not self._allow_multiple else paths_to_add)
+
+    def _handle_browse(self) -> None:
+        """内部处理浏览按钮，支持多文件选择"""
+        if self._allow_folder:
+            path = select_directory(
+                title=t("ui.dialog.select", type=self.cget("text")),
+                log=self._logger.log if self._logger else None
+            )
+            if path:
+                dir_path = Path(path)
+                bundle_files = sorted(f for f in dir_path.iterdir() if f.is_file() and f.suffix == '.bundle')
+                if bundle_files:
+                    self._set_files(bundle_files[:1] if not self._allow_multiple else bundle_files)
+        else:
+            select_file(
+                title=t("ui.dialog.select", type=self.cget("text")),
+                filetypes=self._filetypes,
+                multiple=self._allow_multiple,
+                callback=self._handle_browse_callback,
+                log=self._logger.log if self._logger else None
+            )
+
+    def _handle_browse_callback(self, paths: list[Path]) -> None:
+        """浏览选择后的回调处理"""
+        if paths:
+            self._set_files(paths)
+
+    def _set_files(self, paths: list[Path]) -> None:
+        """设置文件列表并触发回调"""
+        self._paths = paths
+        self._update_display()
+        if self._on_files_selected:
+            if self._allow_multiple:
+                self._on_files_selected(paths)
+            else:
+                self._on_files_selected(paths[0])
+
+    @staticmethod
+    def _debounce_wraplength(event: tk.Event) -> None:
+        """防抖处理函数，用于更新标签的 wraplength"""
+        widget = event.widget
+        if hasattr(widget, "_debounce_timer"):
+            widget.after_cancel(widget._debounce_timer)
+        widget._debounce_timer = widget.after(500,
+            lambda: widget.config(wraplength=widget.winfo_width() - 10))
 
 
 class SettingRow:
@@ -517,13 +583,16 @@ class SettingRow:
         label: str,
         text_var: tk.StringVar,
         values: list[str],
-        tooltip: str | None = None
+        tooltip: str | None = None,
+        width: int | None = None,
     ) -> tb.Combobox:
         """创建下拉框行"""
+        if width is None:
+            width = max((len(v) for v in values), default=0) + 2
         container = SettingRow.create_container(parent)
         SettingRow._add_label_area(container, label, tooltip)
         
-        combobox = tb.Combobox(container, textvariable=text_var, values=values, width=10)
+        combobox = tb.Combobox(container, textvariable=text_var, values=values, width=width)
         combobox.pack(side=tk.RIGHT, padx=(10, 0))
         return combobox
 
@@ -582,7 +651,7 @@ class SettingRow:
 class ModeSwitcher:
     """可复用的模式切换组件，使用Radiobutton实现"""
 
-    def __init__(self, parent, mode_var: tk.StringVar, options: list[tuple[str, str]], command: Callable[[], None] | None = None):
+    def __init__(self, parent, mode_var: tk.Variable, options: list[tuple[str | int, str]], command: Callable[[], None] | None = None):
         """
         初始化模式切换组件
 
@@ -630,7 +699,8 @@ class FileListbox:
     
     def __init__(self, parent, title:str, file_list:list[Path] = [], placeholder_text:str | None = None, height=10, logger=None,
     display_formatter: Callable[[Path], str] | None = None, 
-    on_files_added: Callable[[list[Path]], None] | None = None
+    on_files_added: Callable[[list[Path]], None] | None = None,
+    allowed_suffixes: set[str] = {".bundle"}
     ):
         """
         初始化文件列表框组件
@@ -644,6 +714,7 @@ class FileListbox:
             logger: 日志记录器
             display_formatter: 可选的文件名显示格式化函数 (Path -> str)。如果不提供，默认显示文件名。
             on_files_added: 可选的文件添加回调函数，当文件被添加时调用
+            allowed_suffixes: 允许的文件后缀集合，默认仅 .bundle
         """
         self.parent = parent
         self.file_list: list[Path] = file_list
@@ -652,6 +723,7 @@ class FileListbox:
         self.logger: Logger = logger
         self.display_formatter = display_formatter
         self.on_files_added = on_files_added
+        self.allowed_suffixes = allowed_suffixes
         
         self._create_widgets(title)
         
@@ -805,15 +877,15 @@ class FileListbox:
         """处理拖放事件"""
         # tkinterdnd2 返回的events.data有{}的形式也有空格分隔的形式，要用自带的函数处理
         raw_paths = event.widget.tk.splitlist(event.data)
+        suffixes = self.allowed_suffixes
         paths_to_add = []
         
         for p_str in raw_paths:
             path = Path(p_str)
             if path.is_dir():
-                # 如果是目录，添加目录下的所有.bundle文件
-                paths_to_add.extend(sorted(path.glob('*.bundle')))
-            elif path.is_file() and path.suffix == '.bundle':
-                # 如果是.bundle文件，直接添加
+                for suf in suffixes:
+                    paths_to_add.extend(sorted(path.glob(f'*{suf}')))
+            elif path.is_file() and path.suffix.lower() in suffixes:
                 paths_to_add.append(path)
         
         if paths_to_add:
@@ -821,9 +893,11 @@ class FileListbox:
     
     def _browse_add_files(self):
         """浏览添加文件"""
+        ft = [(f"*{s}", f"*{s}") for s in sorted(self.allowed_suffixes)]
+        ft.append((t("file_type.all_files"), "*.*"))
         select_file(
             title=t("action.add_files"),
-            filetypes=[(t("file_type.bundle"), "*.bundle"), (t("file_type.all_files"), "*.*")],
+            filetypes=ft,
             multiple=True,
             callback=lambda paths: self.add_files(paths),
             log=self.logger.log if self.logger else None
@@ -838,14 +912,16 @@ class FileListbox:
 
         if folder:
             path = Path(folder)
-            files = sorted(path.glob("*.bundle"))
+            files: list[Path] = []
+            for suf in self.allowed_suffixes:
+                files.extend(sorted(path.glob(f'*{suf}')))
             if files:
                 self.add_files(files)
                 if self.logger:
                     self.logger.log(t('log.file.added_count', count=len(files)))
             else:
                 if self.logger:
-                    self.logger.log(t('log.file.no_files_found_in_folder', type=".bundle"))
+                    self.logger.log(t('log.file.no_files_found_in_folder', type=', '.join(sorted(self.allowed_suffixes))))
     
     def _remove_selected(self):
         """移除选中的文件"""

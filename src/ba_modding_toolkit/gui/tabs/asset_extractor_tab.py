@@ -1,34 +1,36 @@
-# ui/tabs/asset_extractor_tab.py
+# gui/tabs/asset_extractor_tab.py
 
 import tkinter as tk
 import ttkbootstrap as tb
 from tkinter import messagebox
 from pathlib import Path
-import os
 
 from ...i18n import t
 from ... import core
+from ...naming import parse_filename
 from ..base_tab import TabFrame
-from ..components import Theme, UIComponents, SettingRow, FileListbox
-from ..utils import handle_drop, select_file, select_directory, open_directory
+from ..components import UIComponents, SettingRow, DropZone
+from ..utils import select_directory, open_directory
 
 class AssetExtractorTab(TabFrame):
     def create_widgets(self):
-        self.bundle_paths: list[Path] = []
-        
         # 子目录变量
         self.subdir_var: tk.StringVar = tk.StringVar()
-        
-        # 目标 Bundle 文件列表
-        self.bundle_listbox = FileListbox(
+
+        # 文件选择回调函数
+        def on_files_selected(paths: list[Path]) -> None:
+            if paths:
+                core_name = parse_filename(paths[0].stem).core
+                self.subdir_var.set(core_name)
+
+        # 目标 Bundle 文件拖放区域
+        self.bundle_dropzone = DropZone(
             self,
             title=t("ui.label.bundles_to_extract"),
-            file_list=self.bundle_paths,
             placeholder_text=t("ui.extractor.placeholder_bundle"),
-            height=5,
-            logger=self.logger
+            on_files_selected=on_files_selected,
+            logger=self.logger,
         )
-        self.bundle_listbox.get_frame().pack(fill=tk.X, pady=(0, 5))
         
         # 输出目录
         self.output_frame = UIComponents.create_directory_path_entry(
@@ -40,6 +42,7 @@ class AssetExtractorTab(TabFrame):
         # 资源类型选项
         options_frame = tb.Labelframe(self, text=t("ui.label.options"), padding=10)
         options_frame.pack(fill=tk.X, pady=(5,0))
+        
         
         # Spine 降级选项
         SettingRow.create_switch(
@@ -57,6 +60,14 @@ class AssetExtractorTab(TabFrame):
             tooltip=t("option.spine_downgrade_target_version_info")
         )
         
+        # Atlas 解包帧选项
+        SettingRow.create_switch(
+            options_frame,
+            label=t("option.unpack_atlas"),
+            variable=self.app.unpack_atlas_var,
+            tooltip=t("option.unpack_atlas_info")
+        )
+
         # 操作按钮
         action_frame = tb.Frame(self)
         action_frame.pack(fill=tk.X, pady=10)
@@ -94,24 +105,20 @@ class AssetExtractorTab(TabFrame):
     
     def open_output_dir(self):
         """打开输出子目录"""
-        # 获取子目录名
         subdir_name = self.subdir_var.get().strip()
-        if not subdir_name and self.bundle_path:
-            subdir_name = self.bundle_path.stem
+        base_path = Path(self.app.output_dir_var.get())
         
-        if subdir_name:
-            # 如果是相对路径，则与输出目录组合
-            if not Path(subdir_name).is_absolute():
-                output_path = Path(self.app.output_dir_var.get()) / subdir_name
-            else:
-                output_path = Path(subdir_name)
+        # 绝对路径直接使用，否则拼接到全局输出目录
+        if subdir_name and Path(subdir_name).is_absolute():
+            output_path = Path(subdir_name)
         else:
-            output_path = Path(self.app.output_dir_var.get())
+            output_path = base_path / subdir_name
             
         open_directory(output_path, create_if_not_exist=True)
 
     def run_extraction_thread(self):
-        if not self.bundle_paths:
+        bundle_paths = self.bundle_dropzone.paths
+        if not bundle_paths:
             messagebox.showerror(t("common.error"), t("message.no_file_selected"))
             return
             
@@ -127,8 +134,8 @@ class AssetExtractorTab(TabFrame):
         
         # 获取子目录名
         subdir_name = self.subdir_var.get().strip()
-        if not subdir_name and len(self.bundle_paths) == 1:
-            subdir_name = self.bundle_paths[0].stem
+        if not subdir_name and len(bundle_paths) == 1:
+            subdir_name = bundle_paths[0].stem
         
         # 如果是相对路径，则与输出目录组合
         if subdir_name and not Path(subdir_name).is_absolute():
@@ -138,41 +145,27 @@ class AssetExtractorTab(TabFrame):
         else:
             final_output_path = output_path
             
-        asset_types = set()
-        if self.app.replace_all_var.get():
-            asset_types.add("ALL")
-        else:
-            if self.app.replace_texture2d_var.get(): asset_types.add("Texture2D")
-            if self.app.replace_textasset_var.get(): asset_types.add("TextAsset")
-            if self.app.replace_mesh_var.get(): asset_types.add("Mesh")
+        asset_types = self.app.get_asset_types()
         
         if not asset_types:
             messagebox.showwarning(t("common.tip"), t("message.missing_asset_type"))
             return
             
-        # 传递 Spine 降级选项
-        enable_atlas_downgrade = self.app.enable_atlas_downgrade_var.get()
-        spine_converter_path = self.app.spine_converter_path_var.get()
+        unpack_atlas = self.app.unpack_atlas_var.get()
             
-        self.run_in_thread(self.run_extraction, self.bundle_paths, final_output_path, asset_types, enable_atlas_downgrade, spine_converter_path)
+        self.run_in_thread(self.run_extraction, bundle_paths, final_output_path, asset_types, unpack_atlas)
 
-    def run_extraction(self, bundle_paths: list[Path], output_dir: Path, asset_types: set[str], enable_atlas_downgrade=False, spine_converter_path=None):
-        self.logger.status(t("log.status.extracting"))
+    def run_extraction(self, bundle_paths: list[Path], output_dir: Path, asset_types: set[str], unpack_atlas=False):
+        self.logger.status(t("status.extracting"))
         
-        # 创建 SpineOptions 对象
-        target_version = self.app.spine_downgrade_version_var.get().strip()
-        
-        spine_options = core.SpineOptions(
-            enabled=enable_atlas_downgrade,
-            converter_path=Path(spine_converter_path),
-            target_version=target_version
-        )
+        spine_options = self.app.build_spine_options(upgrade_mode=False)
         
         success, message = core.process_asset_extraction(
             bundle_path=bundle_paths,
             output_dir=output_dir,
             asset_types_to_extract=asset_types,
             spine_options=spine_options,
+            unpack_atlas=unpack_atlas,
             log=self.logger.log
         )
         
@@ -181,4 +174,4 @@ class AssetExtractorTab(TabFrame):
         else:
             messagebox.showerror(t("common.fail"), message)
             
-        self.logger.status(t("log.status.done"))
+        self.logger.status(t("status.done"))

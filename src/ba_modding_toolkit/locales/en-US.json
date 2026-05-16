@@ -53,8 +53,8 @@
 		"auto_detect_subdirs_info": "",
 		"crc_correction": "CRC Correction",
 		"crc_correction_info": "Corrects the CRC checksum of bundle files to prevent the 'Abnormal Client' error after modification.\nThis option must be enabled for the Steam version; it is not required for mobile versions.\nWhen set to 'Auto', the tool will determine if it's needed based on the target bundle's platform info.",
-		"padding": "Add Padding",
-		"padding_info": "Appends \"0x08080808\" to the end of the file.",
+		"extra_bytes": "Extra Bytes",
+		"extra_bytes_info": "Data to append before CRC correction.\nStarts with 0x for hex (e.g., 0x0808), otherwise ASCII string (e.g., AB). Leave empty to disable.",
 		"backup": "Create Backup",
 		"backup_info": "Creates a backup before replacing files.",
 		"compression_method": "Compression Method",
@@ -72,9 +72,11 @@
 		"spine_target_version": "Target Version",
 		"spine_target_version_info": "Format should be \"A.B.C\".",
 		"spine_downgrade": "Enable Spine Downgrade",
-		"spine_downgrade_info": "(Optional Extension)\nCalls an external program to export files compatible with older Spine versions (.skel and .atlas).\nRequires configuring the path to the Skel Converter.",
+		"spine_downgrade_info": "(Optional Extension)\nCalls an external program to export files compatible with older Spine versions (.skel and .atlas).\nRequires configuring. path to Skel Converter.",
 		"spine_downgrade_target_version": "Target Version",
 		"spine_downgrade_target_version_info": "Format should be \"A.B.C\".",
+		"unpack_atlas": "Unpack Atlas",
+		"unpack_atlas_info": "Unpacks Atlas into individual PNG frames.\nUnpacked frames are saved in an images/ subdirectory.",
 		"auto_search": "Auto Search for Corresponding Files",
 		"auto_search_info": "",
 		"game_root_dir": "Game Directory",
@@ -99,6 +101,8 @@
 	},
 	"message": {
 		"confirm_replace_file": "This operation will overwrite the file: {path}\n\nIt is recommended to ensure that backups are enabled.\nAre you sure you want to continue?",
+		"confirm_replace_files": "This operation will overwrite {count} files:\n{files}",
+		"and_more_files": "...and {count} more",
 		"confirm_reset_settings": "Are you sure you want to reset to default settings?",
 		"file_not_found": "File not found: {path}",
 		"file_not_selected": "No file selected",
@@ -115,7 +119,6 @@
 		"process_success": "Process Successful!",
 		"process_failed": "Process Failed: {error}",
 		"error_during_process": "An error occurred during processing:\n{error}",
-		"no_bundles_in_folder": "No .bundle files found in this folder.",
 		"cannot_open_explorer": "Cannot open directory: {error}",
 		"open_manually": "Please open the directory manually: {path}",
 		"invalid_operation": "Invalid operation",
@@ -123,8 +126,6 @@
 		"create_dir_failed_detail": "Failed to create directory:\n{path}\n\nError details: {error}",
 		"output_dir_not_set": "Output directory not set. Please configure it in settings first.",
 		"save_success": "File saved successfully.",
-		"save_and_crc_success": "File saved and CRC corrected successfully.",
-		"save_or_crc_error": "Error saving or correcting file: {error}",
 		"same_file": "Both paths are identical!",
 		"config": {
 			"saved": "Configuration saved.",
@@ -144,8 +145,6 @@
 		},
 		"crc": {
 			"provide_at_least_one_file": "Please provide at least one file path.",
-			"provide_both_files": "Please provide both the original file and the file to be corrected.",
-			"check_failed": "Error checking CRC value. Please verify the original and modified files are correct.",
 			"match_no_correction_needed": "CRC values match, no correction needed.",
 			"correction_success": "CRC Correction Successful!\nThe corrected file has been saved to the output directory:\n{path}",
 			"correction_failed": "CRC Correction Failed.",
@@ -178,39 +177,44 @@
 		"mod_update": {
 			"no_matching_assets_to_replace": "No assets with matching names found for replacement. Cannot continue update.",
 			"success": "One-click update successful!",
-			"migration_failed": "Asset migration process failed. Please check the log for details."
+			"migration_failed": "Asset migration process failed. Please check the log for details.",
+			"no_assets_extracted": "No assets were extracted from source files",
+			"no_targets_processed": "No target files were successfully processed",
+			"all_targets_unchanged": "All target files are unchanged, no update needed"
 		},
 		"jp_convert": {
 			"load_global_failed": "Failed to load Global server source file",
-			"load_jp_asset_failed": "Failed to load JP server {type} file",
 			"jp_to_global_success": "JP -> Global conversion successful!\nReplaced {asset_count} assets",
 			"global_to_jp_success": "Global -> JP conversion successful!\nReplaced {bundle_count} Bundles, {asset_count} assets",
 			"conversion_error": "Error occurred during conversion:\n{error}",
 			"load_global_source_failed": "Failed to load Global server source file",
 			"no_assets_in_source": "No extractable assets found in the source file. Cannot convert.",
-			"no_assets_matched": "No matching assets found. Cannot convert.",
-			"save_asset_bundle_failed": "Failed to save {type} Bundle: {message}"
+			"no_assets_matched": "No matching assets found. Cannot convert."
+		},
+		"save_error": "Error saving file: {error}",
+		"replace_result": "Replacement completed!\nSuccess: {success} files, Failure: {fail} files",
+		"batch": {
+			"success": "Batch processing completed!\nSuccess: {success}, Failure: {fail}"
 		}
 	},
+	"status": {
+		"ready": "Ready",
+		"processing": "Processing",
+		"processing_detailed": "Processing: {filename}",
+		"processing_batch": "Processing ({current}/{total}): {filename}",
+		"batch_starting": "Starting batch update",
+		"searching": "Searching for files...",
+		"search_not_found": "No matching files found",
+		"done": "Done",
+		"failed": "Failed",
+		"error": "Error: {error}",
+		"loaded": "Loaded {type}",
+		"calculation_done": "Calculation done",
+		"extracting": "Extracting resources..."
+	},
 	"log": {
-		"status": {
-			"ready": "Ready",
-			"processing": "Processing",
-			"processing_detailed": "Processing: {filename}",
-			"processing_batch": "Processing ({current}/{total}): {filename}",
-			"batch_starting": "Starting batch update",
-			"searching": "Searching for files...",
-			"search_not_found": "No matching files found",
-			"done": "Done",
-			"failed": "Failed",
-			"error": "Error: {error}",
-			"loaded": "Loaded {type}",
-			"calculation_done": "Calculation done",
-			"extracting": "Extracting resources..."
-		},
 		"file": {
 			"loaded": "Loaded: {path}",
-			"loaded_type": "Loaded {type}: {name}",
 			"saving_bundle_prefix": "Saving Bundle...",
 			"compression_method": "Compression: {compression}",
 			"crc_correction": "CRC Correction: {crc_status}",
@@ -221,7 +225,6 @@
 			"read_in_memory_failed": "Failed to read file \"{name}\" in memory: {error}",
 			"load_failed": "Failed to load \"{path}\" by any method.",
 			"save_failed": "Failed to save file to \"{path}\": {error}",
-			"save_or_crc_failed": "Failed to save or correct bundle file to \"{path}\": {error}",
 			"directory_opened": "Opened directory: {path}",
 			"added_count": "Added {count} files",
 			"removed_count": "Removed {count} files",
@@ -254,11 +257,10 @@
 			"version_detected_downgrading": "Detected Spine version: {version}. Attempting downgrade...",
 			"atlas_downgrade_success": "Atlas downgrade successful",
 			"atlas_downgrade_failed": "Atlas downgrade failed",
-			"missing_matching_atlas": "Found {skel} but missing matching {atlas}. Handling as standalone file.",
-			"skel_conversion_failed_using_original": "Skel conversion failed. Using original .skel file.",
-			"no_skel_found": "No .skel file found in bundle.",
 			"edit_atlas": "Edited Atlas file: {filename}",
-			"rescaling_page": "Rescaling page {page} (scale: {scale})"
+			"unpacking_atlas": "Unpacking Atlas: {name}",
+			"atlas_unpack_success": "Atlas unpack successful, frames saved to: {path}",
+			"atlas_unpack_failed": "Atlas unpack failed"
 		},
 		"packer": {
 			"start_packing": "Starting packing from resource folder...",
@@ -290,26 +292,34 @@
 			"extract_to_temp": "Extract resources to temp directory",
 			"move_to_output": "Move extracted files to output directory",
 			"process_spine_downgrade": "Process Spine assets and downgrade",
+			"process_atlas_unpack": "Unpack Atlas frame images",
 			"copy_standalone_files": "Copy standalone files",
 			"asset_migration": "Asset Migration",
 			"extracting_from_global": "Extracting resources from Global file",
 			"extracting_from_jp": "Extracting resources from JP file",
 			"applying_to_global": "Applying to Global file",
-			"migration_complete": "Migration complete: {text_count} TextAssets, {tex_count} Texture2Ds",
-			"conversion_complete": "Conversion complete"
+			"conversion_complete": "Conversion complete",
+			"copy_converted_files": "Copying converted files",
+			"applying_to_targets": "Applying to target group",
+			"extracting_patches": "Extracting Patches"
 		},
 		"compression": {
-			"original_short": "Orig",
-			"none_short": "None"
+			"original": "Orig",
+			"none": "None",
+			"lzma": "LZMA",
+			"lz4": "LZ4"
 		},
 		"search": {
 			"searching_for_file": "Searching for corresponding file for \"{name}\"...",
+			"searching_for_file_group": "Searching target files for {count} source files...",
 			"file_prefix": "File prefix: \"{prefix}\"",
 			"found_candidates": "Found {count} candidate files. Verifying content...",
 			"old_mod_asset_count": "Old Mod contains {count} assets.",
+			"source_mod_asset_count": "Source group contains {count} assets.",
 			"checking_candidate": "Checking: {name}",
 			"find_failed": "Search failed: {message}",
-			"found_count": "Successfully found {count} matching files."
+			"found_count": "Successfully found {count} matching files.",
+			"no_found": "No files found"
 		},
 		"extractor": {
 			"starting_extraction": "Starting extraction from \"{filename}\"...",
@@ -317,9 +327,8 @@
 			"using_temp_dir": "Using temp directory: {path}",
 			"skipping_unnamed": "Skipping an unnamed {type} asset",
 			"extraction_failed": "Error extracting asset {name}: {error}",
-			"processing_asset_group": "Processing asset group: {name}",
-			"copying_file": "Copying file: {name}",
-			"starting_extraction_num": "Extracting resources from {num} fils..."
+			"starting_extraction_num": "Extracting resources from {num} fils...",
+			"processing_file": "Processing: {name}"
 		},
 		"migration": {
 			"extracting_from_old_bundle": "Extracting specified asset types from old bundle: {types}",
@@ -331,20 +340,32 @@
 			"writing_to_new_bundle": "Writing assets to new bundle...",
 			"strategy_success": "Strategy \"{name}\" successfully replaced {count} assets",
 			"strategy_no_match": "Strategy \"{name}\" failed to match any assets.",
-			"all_strategies_failed": "All matching strategies failed to find replaceable assets ({types}) in the new bundle."
+			"all_strategies_failed": "All matching strategies failed to find replaceable assets ({types}) in the new bundle.",
+			"strategy_skipped_unchanged": "Strategy \"{name}\": All files unchanged, skipping generation"
 		},
 		"mod_update": {
 			"using_old_mod": "Using old Mod: {name}",
 			"using_new_resource": "Using new resource: {name}",
 			"migration_complete": "Resource migration complete. Processed {count} assets.",
-			"batch_summary": "Batch processing complete!\n\nTotal: {total}\nSuccess: {success}\nFailed: {fail}",
 			"all_processes_complete": "All processes completed!",
-			"batch_start": "Starting batch processing...",
+			"updating": "Updating...",
+			"all_resources_unchanged": "All resources unchanged ({count}), skipping output file generation",
+			"source_files": "Source group ({count} files)",
+			"target_files": "Target group ({count} files)",
+			"pool_built": "Replacement pool built with {count} assets",
+			"target_unchanged": "Target unchanged: {name} ({count} assets), skipping",
+			"target_processed": "Target processed: {name} ({applied} assets replaced)",
+			"all_targets_unchanged": "All target files are unchanged, no update needed"
+		},
+		"batch": {
+			"summary": "Batch processing complete!\nTotal: {total}, Success: {success}, Failed: {fail}",
+			"start": "Starting batch processing...",
 			"failed_items_cnt": "Total {count} files failed to process:",
 			"failed_item": "- {filename}",
 			"process_success": "Process success: {filename}",
 			"process_failed": "Process failed: {filename} - {message}",
-			"updating": "Updating..."
+			"process_unchanged": "Content unchanged, skipping: {filename}",
+			"output_files_list": "Output files list ({count} total):"
 		},
 		"jp_convert": {
 			"error_jp_to_global": "Error during JP -> Global conversion: {error}",
@@ -353,7 +374,6 @@
 			"searching_jp_counterparts": "Searching for corresponding JP files for \"{name}\"...",
 			"starting_jp_to_global": "Starting JP -> Global conversion...",
 			"global_base_file": "Global source file: {name}",
-			"jp_asset_file": "JP {type} file: {name}",
 			"jp_files_count": "Number of selected JP files: {count}",
 			"extracted_count_from_jp": "Extracted {count} assets from JP files",
 			"no_assets_replaced": "No assets replaced",
@@ -362,7 +382,8 @@
 			"global_source_file": "Global source file: {name}",
 			"extracted_count": "Extracted {count} assets.",
 			"global_to_jp_complete": "Global -> JP conversion complete!",
-			"auto_search_no_game_dir": "Auto-search failed: Game resource directory not set."
+			"auto_search_no_game_dir": "Auto-search failed: Game resource directory not set.",
+			"file_unchanged": "File content unchanged: {name} ({count} assets), skipping generation"
 		},
 		"game_dir_not_set": "Game resource directory not set. Cannot automatically locate original files.",
 		"file_not_found_in_dirs": "Could not find corresponding original file \"{filename}\" in specified resource directories.",
@@ -370,14 +391,15 @@
 		"output_dir_not_set": "Output directory not set",
 		"error_detail": "Error occurred: {error}",
 		"error_processing": "Error occurred during processing: {error}",
-		"processing_filename": "Processing file: {name}",
 		"processing_filename_with_progress": "({current}/{total}) Processing file: {name}",
 		"process_failed": "Process failed: {error}",
 		"replace_original": "You can now press the \"{button}\" button to overwrite the original file",
 		"generated_file_not_found": "Operation reported success, but the generated file was not found in the output directory.",
 		"replace_resource_failed": "Error replacing resource [{type}] {name}: {error}",
+		"replace_skipped_same_content": "Skipped replacement for [{type}] {name}: content identical to original",
 		"platform_info": "Target Platform: {platform} (Unity {version})",
-		"unnamed_resource": "Unnamed {type} asset"
+		"unnamed_resource": "Unnamed {type} asset",
+		"success_fail": "Success: {success}, Fail: {fail}"
 	},
 	"ui": {
 		"app_title": "BA Modding Toolkit",
@@ -403,12 +425,12 @@
 			"placeholder_old": "Drag and drop the old Mod file to update or port here\nOr click the button below to select",
 			"placeholder_new": "Selecting a modified file will auto-search for the original\nOr drag/browse manually",
 			"placeholder_batch": "Drag and drop files or folders here...",
-			"status_searching": "Searching for corresponding resources...",
 			"status_not_found": "Matching resource not found: {message}"
 		},
 		"crc_tool": {
 			"placeholder_modified": "Drag and drop Bundle to correct CRC here\nOr click the button below to select",
-			"placeholder_origin": "Selecting a file to correct will auto-search for the original\nOr drag/browse manually"
+			"placeholder_origin": "Selecting a file to correct will auto-search for the original\nOr drag/browse manually",
+			"target_crc_placeholder": "Will be auto-filled after selecting a modified file"
 		},
 		"packer": {
 			"placeholder_assets": "Drag and drop folder containing assets (.png/.skel/.atlas) here\nOr click the button below to select",
@@ -418,12 +440,12 @@
 			"placeholder_bundle": "Drag and drop all Bundles to extract from here"
 		},
 		"jp_conversion": {
-			"mode_jp_to_gl": "JP → Global (Merge)",
-			"mode_gl_to_jp": "Global → JP (Split)",
+			"mode_jp_to_gl": "JP→GL (Merge)",
+			"mode_gl_to_jp": "GL→JP (Split)",
+			"mode_legacy_batch": "Batch Legacy",
 			"placeholder_jp_files": "Drag and drop all related JP files (textures, textassets...) here",
 			"role_jp_source": "JP Bundle (Source)",
 			"role_global_source": "Global Bundle (Source)",
-			"global_bundle": "Global Bundle",
 			"role_global_target": "Global Bundle (Target)",
 			"role_jp_target": "JP Bundle (Target)",
 			"placeholder_global_bundle": "Drag and drop Global Bundle file here\nOr click the button below to select"
@@ -437,7 +459,11 @@
 		},
 		"drop_zone": {
 			"file_hint": "Drag and drop files here\nOr click the button below to select",
-			"folder_hint": "Drag and drop folder here\nOr click the button below to select"
+			"folder_hint": "Drag and drop folder here\nOr click the button below to select",
+			"searching": "Searching......"
+		},
+		"group_drop_zone": {
+			"contains": "Contains {count} files: {types}"
 		},
 		"label": {
 			"custom_resource_dir": "Custom Resource Dir",
@@ -454,7 +480,8 @@
 			"original_file": "Original File",
 			"modified_file": "File to Correct",
 			"environment": "Environment",
-			"options": "Options"
+			"options": "Options",
+			"target_crc": "Target CRC Value"
 		},
 		"log_area": "Log",
 		"status_label": "Status: "

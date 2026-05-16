@@ -1,4 +1,4 @@
-# ui/tabs/mod_update_tab.py
+# gui/tabs/mod_update_tab.py
 
 import tkinter as tk
 import ttkbootstrap as tb
@@ -8,74 +8,54 @@ from pathlib import Path
 from ...i18n import t
 from ... import core
 from ..base_tab import TabFrame
-from ..components import Theme, UIComponents, FileListbox, ModeSwitcher
-from ..dialogs import FileSelectionDialog
-from ..utils import handle_drop, replace_file, select_file, select_directory
+from ..components import DropZone, UIComponents, SettingRow
+from ..utils import confirm_and_replace
 from ...utils import get_search_resource_dirs
 
+
 class ModUpdateTab(TabFrame):
-    """一个整合了单个更新和批量更新功能的标签页"""
+    """Mod更新标签页，用于单个mod文件的更新"""
+
+    def __init__(self, *args, **kwargs):
+        self.source_paths: list[Path] = []
+        self.target_paths: list[Path] = []
+        self.current_file_pairs: list[tuple[Path, Path]] = []
+        self.match_strategy_var = tk.StringVar(value='path_id')
+        super().__init__(*args, **kwargs)
+
     def create_widgets(self):
-        # --- 共享变量 ---
-        # 单个更新
-        self.old_mod_path: Path | None = None
-        self.new_mod_path: Path | None = None
-        self.final_output_path: Path | None = None
-        # 批量更新
-        self.mod_file_list: list[Path] = []
-        
-        # --- 模式切换 ---
-        self.mode_var = tk.StringVar(value="single")
-        
-        self.mode_switcher = ModeSwitcher(
-            self,
-            self.mode_var,
-            [
-                ("single", t("ui.mod_update.mode_single")),
-                ("batch", t("ui.mod_update.mode_batch"))
-            ],
-            command=self._switch_view
-        )
-
-        # --- 容器框架 ---
-        self.single_frame = tb.Frame(self)
-        self.batch_frame = tb.Frame(self)
-        
-        # 创建两种模式的UI
-        self._create_single_mode_widgets(self.single_frame)
-        self._create_batch_mode_widgets(self.batch_frame)
-        
-        # 初始化视图
-        self._switch_view()
-
-    def _switch_view(self):
-        """根据选择的模式显示或隐藏对应的UI框架"""
-        if self.mode_var.get() == "single":
-            self.batch_frame.pack_forget()
-            self.single_frame.pack(fill=tk.BOTH, expand=True)
-        else:
-            self.single_frame.pack_forget()
-            self.batch_frame.pack(fill=tk.BOTH, expand=True)
-
-    # --- 单个更新UI和逻辑 ---
-    def _create_single_mode_widgets(self, parent):
-        # 1. 旧版 Mod 文件
-        _, self.old_mod_label = UIComponents.create_file_drop_zone(
-            parent, t("ui.label.mod_file"), self.drop_old_mod, self.browse_old_mod,
-            clear_cmd=self.clear_callback('old_mod_path'),
-            label_text=t("ui.mod_update.placeholder_old")
+        # 1. 源文件组
+        self.old_mod_zone = DropZone(
+            self, title=t("ui.label.mod_file"),
+            placeholder_text=t("ui.mod_update.placeholder_old"),
+            on_files_selected=self.on_old_mod_selected,
+            filetypes=[(t("file_type.bundle"), "*.bundle"), (t("file_type.all_files"), "*.*")],
+            logger=self.logger
         )
         
-        # 2. 新版游戏资源文件
-        new_mod_frame, self.new_mod_label = UIComponents.create_file_drop_zone(
-            parent, t("ui.label.target_resource_bundle"), self.drop_new_mod, self.browse_new_mod,
+        # 2. 目标资源文件组
+        self.new_mod_zone = DropZone(
+            self, title=t("ui.label.target_resource_bundle"),
+            placeholder_text=t("ui.mod_update.placeholder_new"),
+            on_files_selected=self.on_new_mod_selected,
+            filetypes=[(t("file_type.bundle"), "*.bundle"), (t("file_type.all_files"), "*.*")],
             search_path_var=self.app.game_resource_dir_var,
-            clear_cmd=self.clear_callback('new_mod_path'),
-            label_text=t("ui.mod_update.placeholder_new")
+            logger=self.logger
+        )
+
+        # 匹配策略选择
+        strategy_frame = tb.Labelframe(self, text=t("ui.label.options"), padding=10)
+        strategy_frame.pack(fill=tk.X, pady=(5, 0))
+        
+        self.strategy_combo = SettingRow.create_combobox_row(
+            strategy_frame, t("option.match_strategy"),
+            self.match_strategy_var,
+            values=['path_id', 'cont_name_type', 'name_type'],
+            tooltip=t("option.match_strategy_info")
         )
 
         # 操作按钮区域
-        action_button_frame = tb.Frame(parent)
+        action_button_frame = tb.Frame(self)
         action_button_frame.pack(fill=tk.X, pady=10)
         action_button_frame.grid_columnconfigure((0, 1), weight=1)
 
@@ -85,95 +65,73 @@ class ModUpdateTab(TabFrame):
         self.replace_button = UIComponents.create_button(action_button_frame, t("action.replace_original"), self.replace_original_thread, bootstyle="danger", state="disabled", style="large")
         self.replace_button.grid(row=0, column=1, sticky="ew", padx=(5, 0), pady=2)
 
-    def drop_old_mod(self, event):
-        handle_drop(event, callback=lambda path: self.set_file_path('old_mod_path', self.old_mod_label, path, t("ui.label.mod_file"), callback=self.auto_find_new_bundle))
+    def on_old_mod_selected(self, paths: list[Path]):
+        """源文件组选中后的处理"""
+        self.source_paths = paths
+        self.logger.log(t("log.file.selected_num", count=len(paths)))
+        for p in paths:
+            self.logger.log(f"  - {p.name}")
+        self.target_paths = []
+        self.new_mod_zone.clear()
+        self.run_in_thread(self._find_target_bundles_worker)
 
-    def browse_old_mod(self):
-        select_file(
-            title=t("ui.dialog.select", type=t("ui.label.mod_file")),
-            filetypes=[(t("file_type.bundle"), "*.bundle"), (t("file_type.all_files"), "*.*")],
-            callback=lambda path: self.set_file_path('old_mod_path', self.old_mod_label, path, t("ui.label.mod_file"), callback=self.auto_find_new_bundle),
-            log=self.logger.log
-        )
+    def on_new_mod_selected(self, paths: list[Path]):
+        """目标资源文件组选中后的处理"""
+        self.target_paths = paths
+        self.logger.log(t("log.file.selected_num", count=len(paths)))
+        for p in paths:
+            self.logger.log(f"  - {p.name}")
+        self.logger.status(t("status.ready"))
 
-    def drop_new_mod(self, event):
-        handle_drop(event, callback=self.set_new_mod_file)
-
-    def browse_new_mod(self):
-        select_file(
-            title=t("ui.dialog.select", type=t("ui.label.target_resource_bundle")),
-            filetypes=[(t("file_type.bundle"), "*.bundle"), (t("file_type.all_files"), "*.*")],
-            callback=self.set_new_mod_file,
-            log=self.logger.log
-        )
-            
-    def set_new_mod_file(self, path: Path):
-        self.new_mod_path = path
-        self.new_mod_label.config(text=path.name, bootstyle="success")
-        self.logger.log(t("log.file.loaded", path=path))
-        self.logger.status(t("log.status.ready"))
-
-    def auto_find_new_bundle(self):
-        self.run_in_thread(self._find_new_bundle_worker)
-        
-    def _find_new_bundle_worker(self):
-        self.new_mod_label.config(text=t("ui.mod_update.status_searching"), bootstyle="warning")
-        self.logger.status(t("log.status.processing_detailed"))
+    def _find_target_bundles_worker(self):
+        self.new_mod_zone.set_searching()
+        self.logger.status(t("status.processing_detailed"))
         
         base_game_dir = Path(self.app.game_resource_dir_var.get())
         search_paths = get_search_resource_dirs(base_game_dir, self.app.auto_detect_subdirs_var.get())
 
-        found_paths, message = core.find_new_bundle_path(
-            self.old_mod_path,
+        found_paths, message = core.find_target_bundles(
+            self.source_paths,
             search_paths,
             self.logger.log
         )
         
-        # 在主线程中处理结果
         self.master.after(0, lambda: self._handle_search_result(found_paths, message))
     
     def _handle_search_result(self, found_paths: list[Path], message: str):
         """处理搜索结果"""
         if not found_paths:
-            # 没有找到匹配文件
             ui_message = t("ui.mod_update.status_not_found", message=message)
-            self.new_mod_label.config(text=ui_message, bootstyle="danger")
-            self.logger.status(t("log.status.search_not_found"))
+            self.new_mod_zone.set_error(ui_message)
+            self.logger.status(t("status.search_not_found"))
         elif len(found_paths) == 1:
-            # 只有一个匹配文件，直接使用
-            self.set_new_mod_file(found_paths[0])
+            self.target_paths = found_paths
+            self.new_mod_zone.set_files(found_paths)
+            self.logger.log(t("log.file.loaded", path=found_paths[0]))
+            self.logger.status(t("status.ready"))
         else:
-            # 多个匹配文件，弹出选择对话框
-            dialog = FileSelectionDialog(
-                self.master,
-                title=t("ui.dialog.select_file"),
-                candidates=found_paths,
-                message=t("ui.dialog.multiple_matches_found", count=len(found_paths)),
-                display_formatter=lambda p: f"{p.parent.name} / {p.name}"
-            )
-            
-            selected_path = dialog.get_selected_path()
-            if selected_path:
-                self.set_new_mod_file(selected_path)
-            else:
-                # 用户取消了选择
-                ui_message = t("ui.mod_update.status_not_found", message=t("ui.dialog.selection_cancelled"))
-                self.new_mod_label.config(text=ui_message, bootstyle="warning")
-                self.logger.status(t("log.status.search_not_found"))
+            # 多个匹配文件，直接将所有文件设置为目标组
+            self.target_paths = found_paths
+            self.new_mod_zone.set_files(found_paths)
+            self.logger.log(t("message.search.found_multiple_matches", count=len(found_paths)))
+            self.logger.status(t("status.ready"))
 
     def run_update_thread(self):
-        if not all([self.old_mod_path, self.new_mod_path, self.app.game_resource_dir_var.get(), self.app.output_dir_var.get()]):
+        if not self.source_paths or not self.target_paths:
+            messagebox.showerror(t("common.error"), t("message.missing_paths"))
+            return
+        if not self.app.output_dir_var.get():
             messagebox.showerror(t("common.error"), t("message.missing_paths"))
             return
         
-        if not any([self.app.replace_texture2d_var.get(), self.app.replace_textasset_var.get(), self.app.replace_mesh_var.get(), self.app.replace_all_var.get()]):
+        if not self.app.has_any_asset_type():
             messagebox.showerror(t("common.error"), t("message.missing_asset_type"))
             return
 
         self.run_in_thread(self.run_update)
 
     def run_update(self):
-        self.final_output_path = None
+        self.current_file_pairs = []
         self.master.after(0, lambda: self.replace_button.config(state=tk.DISABLED))
 
         output_dir = Path(self.app.output_dir_var.get())
@@ -185,57 +143,55 @@ class ModUpdateTab(TabFrame):
 
         self.logger.log("\n" + "="*50)
         self.logger.log(t("log.mod_update.updating"))
-        self.logger.status(t("log.status.processing_detailed", filename=self.old_mod_path.name))
+        self.logger.log(f"  > {t('log.mod_update.source_files', count=len(self.source_paths))}")
+        for src in self.source_paths:
+            self.logger.log(f"    - {src.name}")
+        self.logger.log(f"  > {t('log.mod_update.target_files', count=len(self.target_paths))}")
+        for tgt in self.target_paths:
+            self.logger.log(f"    - {tgt.name}")
+        self.logger.status(t("status.processing_detailed", filename=self.source_paths[0].name))
         
-        asset_types_to_replace = set()
-        if self.app.replace_all_var.get():
-            asset_types_to_replace = {"ALL"}
-        else:
-            if self.app.replace_texture2d_var.get(): asset_types_to_replace.add("Texture2D")
-            if self.app.replace_textasset_var.get(): asset_types_to_replace.add("TextAsset")
-            if self.app.replace_mesh_var.get(): asset_types_to_replace.add("Mesh")
+        asset_types_to_replace = self.app.get_asset_types()
         
-        crc_setting = self.app.enable_crc_correction_var.get()
-        perform_crc = False
+        perform_crc = self.app.resolve_crc_setting(self.target_paths[0])
         
-        if crc_setting == "auto":
-            platform, unity_version = core.get_unity_platform_info(self.new_mod_path)
-            self.logger.log(t("log.platform_info", platform=platform, version=unity_version))
-            perform_crc = platform == "StandaloneWindows64"
-        elif crc_setting == "true":
-            perform_crc = True
-        
-        save_options = core.SaveOptions(
-            perform_crc=perform_crc,
-            enable_padding=self.app.enable_padding_var.get(),
-            compression=self.app.compression_method_var.get()
+        save_options = self.app.build_save_options(perform_crc)
+
+        spine_options = self.app.build_spine_options()
+
+        success, message, file_pairs = core.process_mod_update(
+            source_paths=self.source_paths,
+            target_paths=self.target_paths,
+            output_dir=output_dir,
+            asset_types_to_replace=asset_types_to_replace,
+            save_options=save_options,
+            spine_options=spine_options,
+            match_strategy=self.match_strategy_var.get(),
+            log=self.logger.log,
         )
         
-        spine_options = core.SpineOptions(
-            enabled=self.app.enable_spine_conversion_var.get(),
-            converter_path=Path(self.app.spine_converter_path_var.get()),
-            target_version=self.app.target_spine_version_var.get()
-        )
-        
-        success, message = core.process_mod_update(
-            old_mod_path = self.old_mod_path,
-            new_bundle_path = self.new_mod_path,
-            output_dir = output_dir,
-            asset_types_to_replace = asset_types_to_replace,
-            save_options = save_options,
-            spine_options = spine_options,
-            log = self.logger.log
-        )
+        self.current_file_pairs = file_pairs
         
         if not success:
             messagebox.showerror(t("common.error"), message)
             return
-
-        generated_bundle_filename = self.new_mod_path.name
-        self.final_output_path = output_dir / generated_bundle_filename
         
-        if self.final_output_path.exists():
-            self.logger.log(t("log.file.saved", path=self.final_output_path))
+        # 处理所有目标都被跳过的情况
+        if message == "all_targets_unchanged":
+            self.logger.log(t("log.mod_update.all_targets_unchanged"))
+            self.master.after(0, lambda: self.replace_button.config(state=tk.DISABLED))
+            messagebox.showinfo(t("common.success"), t("message.mod_update.all_targets_unchanged"))
+            self.logger.status(t("status.done"))
+            return
+
+        # 输出处理总结
+        self.logger.log(f'\n--- {t("log.summary.title")} ---')
+        self.logger.log(f"✅ {t('log.summary.output_files', count=len(file_pairs))}")
+        for pair in file_pairs:
+            self.logger.log(f"  - {pair.source.name}")
+        self.logger.log(f'\n🎉 {t("log.mod_update.all_processes_complete", count=len(file_pairs))}')
+
+        if file_pairs:
             self.logger.log(t("log.replace_original", button=t("action.replace_original")))
             self.master.after(0, lambda: self.replace_button.config(state=tk.NORMAL))
             messagebox.showinfo(t("common.success"), message)
@@ -244,131 +200,13 @@ class ModUpdateTab(TabFrame):
             self.master.after(0, lambda: self.replace_button.config(state=tk.DISABLED))
             messagebox.showinfo(t("common.success"), t("message.process_success"))
         
-        self.logger.status(t("log.status.done"))
+        self.logger.status(t("status.done"))
 
     def replace_original_thread(self):
-        if not self.final_output_path or not self.final_output_path.exists():
-            messagebox.showerror(t("common.error"), t("message.file_not_found", path=self.final_output_path))
-            return
-        if not self.new_mod_path or not self.new_mod_path.exists():
-            messagebox.showerror(t("common.error"), t("message.file_not_found", path=self.new_mod_path))
-            return
-        
-        self.run_in_thread(self.replace_original)
-
-    def replace_original(self):
-        target_file = self.new_mod_path
-        source_file = self.final_output_path
-        
-        replace_file(
-            source_path=source_file,
-            dest_path=target_file,
+        confirm_and_replace(
+            file_pairs=self.current_file_pairs,
             create_backup=self.app.create_backup_var.get(),
-            ask_confirm=True,
-            confirm_message=t("message.confirm_replace_file", path=self.new_mod_path),
             log=self.logger.log,
+            button_to_disable=self.replace_button,
+            master=self.master,
         )
-
-    # --- 批量更新UI和逻辑 ---
-    def _create_batch_mode_widgets(self, parent):
-        # 创建文件列表框，传入自定义显示格式：文件夹名 / 文件名
-        self.batch_file_listbox = FileListbox(
-            parent,
-            t("ui.label.mod_file"),
-            self.mod_file_list,
-            t("ui.mod_update.placeholder_batch"),
-            height=10,
-            logger=self.logger,
-            display_formatter=lambda p: f"{p.parent.name} / {p.name}"
-        )
-        self.batch_file_listbox.get_frame().pack(fill=tk.BOTH, expand=True, pady=(0, 10))
-        
-        run_button = UIComponents.create_button(parent, text=t("action.start"), 
-            command=self.run_batch_update_thread, bootstyle="success", style="large")
-        run_button.pack(fill=tk.X, pady=5)
-
-    def run_batch_update_thread(self):
-        if not self.mod_file_list:
-            messagebox.showerror(t("common.error"), t("message.list_empty"))
-            return
-        if not all([self.app.game_resource_dir_var.get(), self.app.output_dir_var.get()]):
-            messagebox.showerror(t("common.error"), t("message.missing_paths"))
-            return
-        if not any([self.app.replace_texture2d_var.get(), self.app.replace_textasset_var.get(), self.app.replace_mesh_var.get(), self.app.replace_all_var.get()]):
-            messagebox.showerror(t("common.error"), t("message.missing_asset_type"))
-            return
-        
-        self.run_in_thread(self._batch_update_worker)
-
-    def _batch_update_worker(self):
-        self.logger.log("\n" + "#"*50)
-        self.logger.log(t("log.mod_update.batch_start"))
-        self.logger.status(t("log.status.batch_starting"))
-
-        # 1. 准备参数
-        output_dir = Path(self.app.output_dir_var.get())
-        base_game_dir = Path(self.app.game_resource_dir_var.get())
-        search_paths = get_search_resource_dirs(base_game_dir, self.app.auto_detect_subdirs_var.get())
-        
-        try:
-            output_dir.mkdir(parents=True, exist_ok=True)
-        except Exception as e:
-            messagebox.showerror(t("common.error"), t("message.process_failed", error=e))
-            self.logger.status(t("log.status.error", error=e))
-            return
-
-        asset_types_to_replace = set()
-        if self.app.replace_all_var.get():
-            asset_types_to_replace = {"ALL"}
-        else:
-            if self.app.replace_texture2d_var.get(): asset_types_to_replace.add("Texture2D")
-            if self.app.replace_textasset_var.get(): asset_types_to_replace.add("TextAsset")
-            if self.app.replace_mesh_var.get(): asset_types_to_replace.add("Mesh")
-
-        crc_setting = self.app.enable_crc_correction_var.get()
-        perform_crc = False
-        
-        if crc_setting == "auto":
-            perform_crc = True
-        elif crc_setting == "true":
-            perform_crc = True
-
-        save_options = core.SaveOptions(
-            perform_crc=perform_crc,
-            enable_padding=self.app.enable_padding_var.get(),
-            compression=self.app.compression_method_var.get()
-        )
-        
-        spine_options = core.SpineOptions(
-            enabled=self.app.enable_spine_conversion_var.get(),
-            converter_path=Path(self.app.spine_converter_path_var.get()),
-            target_version=self.app.target_spine_version_var.get()
-        )
-
-        # 更新UI状态的回调函数
-        def progress_callback(current, total, filename):
-            self.logger.status(t("log.status.processing_batch", current=current, total=total, filename=filename))
-
-        # 2. 调用核心处理函数
-        success_count, fail_count, failed_tasks = core.process_batch_mod_update(
-            mod_file_list=self.mod_file_list,
-            search_paths=search_paths,
-            output_dir=output_dir,
-            asset_types_to_replace=asset_types_to_replace,
-            save_options=save_options,
-            spine_options=spine_options,
-            log=self.logger.log,
-            progress_callback=progress_callback
-        )
-        
-        # 3. 处理结果并更新UI
-        total_files = len(self.mod_file_list)
-        
-        self.logger.log(t("log.mod_update.batch_summary", total=total_files, success=success_count, fail=fail_count))
-
-        if failed_tasks:
-            self.logger.log(t("log.mod_update.failed_items_cnt", count=fail_count))
-            failed_list = "\n".join([t("log.mod_update.failed_item", filename=f) for f in failed_tasks])
-            self.logger.log(failed_list)
-
-        self.logger.status(t("log.status.done"))

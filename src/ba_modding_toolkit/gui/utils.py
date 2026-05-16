@@ -1,4 +1,4 @@
-# ui/utils.py
+# gui/utils.py
 
 import sys
 import subprocess
@@ -7,13 +7,12 @@ import tkinter as tk
 from tkinter import messagebox, filedialog
 from pathlib import Path
 import shutil
-import toml
 from typing import Callable, TYPE_CHECKING
-if TYPE_CHECKING:
-    from .app import App
+import ttkbootstrap as tb
 
 from ..utils import no_log
 from ..i18n import t
+from ..models import FilePair
 
 def is_multiple_drop(data: str) -> bool:
     """
@@ -135,54 +134,193 @@ def open_directory(path: str | Path, log = no_log, create_if_not_exist: bool = F
     except Exception as e:
         messagebox.showerror(t("common.error"), t("message.process_failed", error=e))
 
-def replace_file(source_path: Path, 
-                    dest_path: Path, 
-                    create_backup: bool = True, 
-                    ask_confirm: bool = True,
-                    confirm_message: str = "",
-                    log = no_log, 
-                ) -> bool: 
-    """ 
-    安全地替换文件，包含确认、备份和日志记录功能。 
-    返回操作是否成功。 
-    """ 
-    if not source_path or not source_path.exists(): 
-        messagebox.showerror(t("common.error"), t("message.file_not_found", path=source_path)) 
-        return False 
-    if not dest_path or not dest_path.exists(): 
-        messagebox.showerror(t("common.error"), t("message.file_not_found", path=dest_path)) 
-        return False 
-    if source_path == dest_path: 
-        messagebox.showerror(t("common.error"), t("message.same_file")) 
+def _perform_file_replace(
+    source_path: Path,
+    dest_path: Path,
+    create_backup: bool = True,
+    log = no_log
+) -> bool:
+    """
+    执行实际的文件替换操作（纯替换/备份逻辑，无UI交互）
+    """
+    if not source_path or not source_path.exists():
+        return False
+    if not dest_path or not dest_path.exists():
+        return False
+    if source_path == dest_path:
         return False
 
-    if ask_confirm and not messagebox.askyesno(t("common.warning"), confirm_message): 
-        return False 
-
-    try: 
-        if create_backup: 
-            backup_path = dest_path.with_suffix(dest_path.suffix + '.backup') 
-            
+    try:
+        if create_backup:
+            backup_path = dest_path.with_suffix(dest_path.suffix + '.backup')
             try:
-                shutil.copy2(dest_path, backup_path) 
+                shutil.copy2(dest_path, backup_path)
             except Exception as e:
-                log(t("log.file.backup_failed", error=e)) 
-                messagebox.showerror(t("common.error"), t("message.process_failed", error=e)) 
+                log(t("log.file.backup_failed", error=e))
                 return False
-            log(t("log.file.backed_up", path=backup_path)) 
-        
-        log(t("log.file.overwritten", path=dest_path)) 
-        shutil.copy2(source_path, dest_path) 
-        
-        log(t("log.status.done")) 
-        messagebox.showinfo(t("common.success"), t("message.process_success")) 
-        return True 
+            log(t("log.file.backed_up", path=backup_path))
 
-    except Exception as e: 
-        log(t("log.process_failed", error=e)) 
+        log(t("log.file.overwritten", path=dest_path))
+        shutil.copy2(source_path, dest_path)
+        return True
 
-        messagebox.showerror(t("common.error"), t("message.process_failed", error=e)) 
-        return False 
+    except Exception as e:
+        log(t("log.process_failed", error=e))
+        return False
+
+
+def replace_file(
+    source_path: Path,
+    dest_path: Path,
+    create_backup: bool = True,
+    ask_confirm: bool = True,
+    confirm_message: str = "",
+    log = no_log,
+) -> bool:
+    """
+    安全地替换文件，包含确认、备份和日志记录功能。
+    返回操作是否成功。
+    """
+    if not source_path or not source_path.exists():
+        messagebox.showerror(t("common.error"), t("message.file_not_found", path=source_path))
+        return False
+    if not dest_path or not dest_path.exists():
+        messagebox.showerror(t("common.error"), t("message.file_not_found", path=dest_path))
+        return False
+    if source_path == dest_path:
+        messagebox.showerror(t("common.error"), t("message.same_file"))
+        return False
+
+    if ask_confirm and not messagebox.askyesno(t("common.warning"), confirm_message):
+        return False
+
+    success = _perform_file_replace(source_path, dest_path, create_backup, log)
+
+    if success:
+        log(t("status.done"))
+        messagebox.showinfo(t("common.success"), t("message.process_success"))
+        return True
+    else:
+        messagebox.showerror(t("common.error"), t("message.process_failed", error=""))
+        return False
+
+
+def replace_files(
+    file_pairs: list[FilePair],
+    create_backup: bool = True,
+    ask_confirm: bool = True,
+    confirm_message: str = "",
+    log = no_log,
+) -> tuple[int, int]:
+    """
+    批量替换文件，包含确认、备份和日志记录功能。
+
+    Args:
+        file_pairs: 文件对列表，每个元素为 (源文件路径, 目标文件路径) 的元组
+        create_backup: 是否创建备份
+        ask_confirm: 是否显示确认对话框
+        confirm_message: 确认对话框的消息
+        log: 日志函数
+
+    Returns:
+        tuple[int, int]: (成功数量, 失败数量) 的元组
+    """
+
+    # 显示确认对话框
+    if ask_confirm and confirm_message:
+        if not messagebox.askyesno(t("common.warning"), confirm_message):
+            return -1, -1
+
+    # 执行批量替换
+    success_count = 0
+    fail_count = 0
+
+    for pair in file_pairs:
+        success = _perform_file_replace(pair.output, pair.source, create_backup, log)
+        if success:
+            success_count += 1
+        else:
+            fail_count += 1
+
+    # 显示结果
+    log(t("log.success_fail", success=success_count, fail=fail_count))
+    messagebox.showinfo(
+        t("common.tip"),
+        t("message.replace_result", success=success_count, fail=fail_count)
+    )
+
+    return success_count, fail_count 
+
+def confirm_and_replace(
+    file_pairs: list[FilePair],
+    create_backup: bool,
+    log,
+    button_to_disable: tb.Button | None = None,
+    master: tk.Tk | tk.Frame | None = None,
+) -> bool:
+    """
+    统一的确认+替换流程，包含：
+    1. 空检查
+    2. 文件存在检查
+    3. 确认对话框构建（含截断逻辑）
+    4. 单/多文件分发
+    5. 按钮状态管理
+
+    Args:
+        file_pairs: 文件对列表，每个元素为 (源文件路径, 目标文件路径) 的元组
+        create_backup: 是否创建备份
+        log: 日志函数
+        button_to_disable: 操作完成后需要禁用的按钮（可选）
+        master: tkinter master 对象，用于调度 UI 更新（可选）
+
+    Returns:
+        bool: 是否成功执行替换操作
+    """
+    if not file_pairs:
+        messagebox.showerror(t("common.error"), t("message.no_file_selected"))
+        return False
+
+    for pair in file_pairs:
+        if not pair.output.exists():
+            messagebox.showerror(t("common.error"), t("message.file_not_found", path=pair.output))
+            return False
+
+    files_to_replace = [f"  {pair.source.name}" for pair in file_pairs[:10]]
+    max_display = 10
+    if len(file_pairs) > max_display:
+        remaining_count = len(file_pairs) - max_display
+        files_list = "\n".join(files_to_replace) + f"\n{t('message.and_more_files', count=remaining_count)}"
+    else:
+        files_list = "\n".join(files_to_replace)
+
+    confirm_message = t("message.confirm_replace_files", count=len(file_pairs), files=files_list)
+
+    if not messagebox.askyesno(t("common.warning"), confirm_message):
+        return False
+
+    if len(file_pairs) == 1:
+        pair = file_pairs[0]
+        replace_file(
+            source_path=pair.output,
+            dest_path=pair.source,
+            create_backup=create_backup,
+            ask_confirm=False,
+            log=log,
+        )
+    else:
+        replace_files(
+            file_pairs=file_pairs,
+            create_backup=create_backup,
+            ask_confirm=False,
+            log=log,
+        )
+
+    log(t("status.done"))
+
+    if button_to_disable and master:
+        master.after(0, lambda: button_to_disable.config(state=tk.DISABLED))
+
+    return True
 
 def select_directory(var: tk.Variable = None, title="", log=no_log):
     """
@@ -260,111 +398,3 @@ def select_file(title: str,
     except Exception as e:
         messagebox.showerror(t("common.error"), t("message.process_failed", error=e))
         return [] if multiple else None
-
-
-
-# --- 配置管理类 ---
-
-class ConfigManager:
-    """配置管理类，负责保存和读取应用设置到config.toml文件"""
-    
-    def __init__(self, config_file="config.toml"):
-        self.config_file = Path(config_file)
-        
-    def save_config(self, app: "App"):
-        """保存当前应用配置到文件"""
-        try:
-            data = {
-                "Directories": {
-                    "game_resource_dir": app.game_resource_dir_var.get(),
-                    "auto_detect_subdirs": app.auto_detect_subdirs_var.get(),
-                    "auto_search": app.auto_search_var.get()
-                },
-                "AppSettings": {
-                    "language": app.language_var.get(),
-                    "output_dir": app.output_dir_var.get()
-                },
-                "GlobalOptions": {
-                    "enable_padding": app.enable_padding_var.get(),
-                    "enable_crc_correction": app.enable_crc_correction_var.get(),
-                    "create_backup": app.create_backup_var.get(),
-                    "compression_method": app.compression_method_var.get()
-                },
-                "ResourceTypes": {
-                    "replace_texture2d": app.replace_texture2d_var.get(),
-                    "replace_textasset": app.replace_textasset_var.get(),
-                    "replace_mesh": app.replace_mesh_var.get(),
-                    "replace_all": app.replace_all_var.get()
-                },
-                "SpineConverter": {
-                    "enable_spine_conversion": app.enable_spine_conversion_var.get(),
-                    "spine_converter_path": app.spine_converter_path_var.get(),
-                    "target_spine_version": app.target_spine_version_var.get()
-                },
-                "SpineDowngrade": {
-                    "enable_atlas_downgrade": app.enable_atlas_downgrade_var.get(),
-                    "spine_downgrade_version": app.spine_downgrade_version_var.get()
-                },
-                "Tabs": {
-                    "enable_spine38_namefix": app.enable_spine38_namefix_var.get(),
-                    "enable_bleed": app.enable_bleed_var.get()
-                }
-            }
-            
-            with open(self.config_file, 'w', encoding='utf-8') as f:
-                toml.dump(data, f)
-                
-            return True
-        except Exception as e:
-            print(t("log.config.save_failed", error=e))
-            return False
-    
-    def load_config(self, app: "App"):
-        """从文件加载配置到应用实例"""
-        try:
-            if not self.config_file.exists():
-                return False
-                
-            with open(self.config_file, 'r', encoding='utf-8') as f:
-                data = toml.load(f)
-            
-            dirs: dict[str] = data.get("Directories", {})
-            app.game_resource_dir_var.set(dirs.get("game_resource_dir", ""))
-            app.auto_detect_subdirs_var.set(dirs.get("auto_detect_subdirs", False))
-            app.auto_search_var.set(dirs.get("auto_search", False))
-            
-            app_settings = data.get("AppSettings", {})
-            if not hasattr(app, 'language_var'):
-                app.language_var = tk.StringVar()
-            app.language_var.set(app_settings.get("language", ""))
-            app.output_dir_var.set(app_settings.get("output_dir", ""))
-            
-            global_options = data.get("GlobalOptions", {})
-            app.enable_padding_var.set(global_options.get("enable_padding", False))
-            app.enable_crc_correction_var.set(global_options.get("enable_crc_correction", "auto"))
-            app.create_backup_var.set(global_options.get("create_backup", False))
-            app.compression_method_var.set(global_options.get("compression_method", ""))
-            
-            resource_types = data.get("ResourceTypes", {})
-            app.replace_texture2d_var.set(resource_types.get("replace_texture2d", False))
-            app.replace_textasset_var.set(resource_types.get("replace_textasset", False))
-            app.replace_mesh_var.set(resource_types.get("replace_mesh", False))
-            app.replace_all_var.set(resource_types.get("replace_all", False))
-            
-            spine_converter = data.get("SpineConverter", {})
-            app.enable_spine_conversion_var.set(spine_converter.get("enable_spine_conversion", False))
-            app.spine_converter_path_var.set(spine_converter.get("spine_converter_path", ""))
-            app.target_spine_version_var.set(spine_converter.get("target_spine_version", ""))
-            
-            spine_downgrade = data.get("SpineDowngrade", {})
-            app.enable_atlas_downgrade_var.set(spine_downgrade.get("enable_atlas_downgrade", False))
-            app.spine_downgrade_version_var.set(spine_downgrade.get("spine_downgrade_version", ""))
-            
-            tabs = data.get("Tabs", {})
-            app.enable_spine38_namefix_var.set(tabs.get("enable_spine38_namefix", False))
-            app.enable_bleed_var.set(tabs.get("enable_bleed", False))
-            
-            return True
-        except Exception as e:
-            print(t("message.process_failed", error=e))
-            return False

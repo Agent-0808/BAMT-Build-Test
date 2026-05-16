@@ -1,7 +1,6 @@
 # utils.py
 
 import binascii
-import os
 import re
 import shutil
 from PIL import Image
@@ -42,7 +41,7 @@ def get_BA_path() -> str | None:
 def get_version() -> str:
     """从 pyproject.toml 读取版本号"""
     try:
-        from _version import __version__
+        from ba_modding_toolkit._version import __version__
         print(__version__)
     except ImportError:
         # 如果在本地开发环境没有这个文件，回退到读取 pyproject.toml
@@ -59,190 +58,146 @@ def no_log(message):
     """A dummy logger that does nothing."""
     pass
 
+
+def parse_hex_bytes(hex_str: str | None) -> bytes | None:
+    """将字符串转换为 bytes
+
+    Args:
+        hex_str: 如果以 0x 或 0X 开头，则按十六进制解析（如 "0x08080808"）
+               否则按 ASCII 字符串直接编码
+
+    Returns:
+        如果输入为空或无效则返回 None，否则返回对应的 bytes
+    """
+    if not hex_str:
+        return None
+    try:
+        # 如果以 0x 或 0X 开头，按十六进制解析
+        if hex_str.startswith("0x") or hex_str.startswith("0X"):
+            hex_str = hex_str[2:]
+            # 验证是否为有效的十六进制字符串（必须为偶数长度）
+            if len(hex_str) % 2 != 0:
+                return None
+            return bytes.fromhex(hex_str)
+        # 否则按 ASCII 字符串直接编码
+        return hex_str.encode("ascii")
+    except (ValueError, UnicodeEncodeError):
+        return None
+
+
 LogFunc = Callable[[str], None]
 
 class CRCUtils:
     """
     一个封装了CRC32计算和修正逻辑的工具类。
+    Prototype by [kalina](https://github.com/kalinaowo)
     """
+
+    POLY_NORMAL = 0x104C11DB7
+    POLY_DEGREE = 32
+    GF2_INVERSE_X32 = 0xCBF1ACDA
+    _BIT_REVERSE_TABLE = bytes(int(f"{i:08b}"[::-1], 2) for i in range(256))
 
     # --- 公开的静态方法 ---
 
     @staticmethod
-    def compute_crc32(data: bytes) -> int:
+    def compute_crc32(src: Path | str | bytes) -> int:
         """
         计算数据的标准CRC32 (IEEE)值。
         """
-        return binascii.crc32(data) & 0xFFFFFFFF
+        if isinstance(src, bytes):
+            return binascii.crc32(src) & 0xFFFFFFFF
+        return CRCUtils._compute_crc32_file(src)
 
     @staticmethod
-    def check_crc_match(source_1: Path | bytes, source_2: Path | bytes) -> bool:
+    def _compute_crc32_file(path: str | Path) -> int:
+        """分块计算文件 CRC32，避免大文件内存溢出"""
+        crc = 0
+        with open(path, "rb") as f:
+            while chunk := f.read(8192):  # 8KB 分块
+                crc = binascii.crc32(chunk, crc)
+        return crc & 0xFFFFFFFF
+
+    @staticmethod
+    def check_crc_match(source_1: Path | str | bytes, source_2: Path | str | bytes) -> tuple[bool, int, int]:
         """
         检测两个文件或字节数据的CRC值是否匹配。
-        返回True表示CRC值一致，False表示不一致。
+        返回 (是否匹配, crc_1, crc_2)。
         """
-        if isinstance(source_1, Path):
-            with open(str(source_1), "rb") as f:
-                data_1 = f.read()
-        else:
-            data_1 = source_1
-
-        if isinstance(source_2, Path):
-            with open(str(source_2), "rb") as f:
-                data_2 = f.read()
-        else:
-            data_2 = source_2
-
-        crc_1 = CRCUtils.compute_crc32(data_1)
-        crc_2 = CRCUtils.compute_crc32(data_2)
+        crc_1 = CRCUtils.compute_crc32(source_1)
+        crc_2 = CRCUtils.compute_crc32(source_2)
         
-        return crc_1 == crc_2
+        return crc_1 == crc_2, crc_1, crc_2
     
     @staticmethod
-    def apply_crc_fix(original_data: bytes, modified_data: bytes, enable_padding: bool = False) -> bytes | None:
+    def apply_crc_fix(modified_data: bytes, target_crc: int) -> bytes | None:
         """
-        计算修正CRC后的数据。
+        计算修正CRC后的数据，使其达到指定的目标CRC值。
         如果修正成功，返回修正后的完整字节数据；如果失败，返回None。
         """
-        original_crc = CRCUtils.compute_crc32(original_data)
-        
-        padding_bytes = b'\x08\x08\x08\x08' if enable_padding else b''
         # 计算新数据加上4个空字节的CRC，为修正值留出空间
-        modified_crc = CRCUtils.compute_crc32(modified_data + padding_bytes + b'\x00\x00\x00\x00')
+        base_crc = binascii.crc32(modified_data)
+        crc_with_zeros = binascii.crc32(b'\x00\x00\x00\x00', base_crc) & 0xFFFFFFFF
+        k = CRCUtils._reverse_bits_32(target_crc ^ crc_with_zeros)
 
-        original_bytes = CRCUtils._u32_to_bytes_be(original_crc)
-        modified_bytes = CRCUtils._u32_to_bytes_be(modified_crc)
-
-        xor_result = CRCUtils._xor_bytes(original_bytes, modified_bytes)
-        reversed_bytes = CRCUtils._reverse_bits_in_bytes(xor_result)
-        k = CRCUtils._bytes_to_u32_be(reversed_bytes)
-
-        # CRC32多项式: x^32 + x^26 + ... + 1
-        crc32_poly = 0x104C11DB7
-
-        correction_value = CRCUtils._gf_inverse(k, crc32_poly)
-        correction_bytes_raw = CRCUtils._u32_to_bytes_be(correction_value)
-
-        # 反转每个字节内的位
-        correction_bytes = bytes(CRCUtils._reverse_byte_bits(b) for b in correction_bytes_raw)
-
-        if enable_padding:
-            final_data = modified_data + padding_bytes + correction_bytes
-        else:
-            final_data = modified_data + correction_bytes
+        correction_value = CRCUtils._gf2_multiply_mod(k, CRCUtils.GF2_INVERSE_X32)
+        correction_bytes = CRCUtils._reverse_bytes_internal_bits(correction_value)
+        final_data = modified_data + correction_bytes
 
         final_crc = CRCUtils.compute_crc32(final_data)
-        is_crc_match = (final_crc == original_crc)
-
+        is_crc_match = (final_crc == target_crc)
         return final_data if is_crc_match else None
 
     @staticmethod
-    def manipulate_crc(original_path: Path, modified_path: Path, enable_padding: bool = False) -> bool:
+    def manipulate_file_crc(modified_path: str | Path, target_crc: int, extra_bytes: bytes | None = None) -> bool:
         """
-        修正modified_path文件的CRC，使其与original_path文件匹配。
-        此方法封装了apply_crc_fix方法，处理文件的读写操作。
+        修正modified_path文件的CRC，使其达到指定的目标CRC值
+        这个函数会直接修改文件内容，而不是输出到指定目录
+        extra_bytes: 可选的4字节数据，将在CRC计算前附加到modified_data后
         """
-        with open(str(original_path), "rb") as f:
-            original_data = f.read()
         with open(str(modified_path), "rb") as f:
             modified_data = f.read()
 
-        corrected_data = CRCUtils.apply_crc_fix(original_data, modified_data, enable_padding)
-        
+        if extra_bytes:
+            modified_data = modified_data + extra_bytes
+
+        corrected_data = CRCUtils.apply_crc_fix(modified_data, target_crc)
+
         if corrected_data:
             with open(modified_path, "wb") as f:
                 f.write(corrected_data)
             return True
-        
+
         return False
 
     # --- 内部使用的私有静态方法 ---
 
     @staticmethod
-    def _bytes_to_u32_be(b):
-        return int.from_bytes(b, 'big')
+    def _reverse_bits_32(val_u32: int) -> int:
+        """快速翻转 32 位整数的所有比特位"""
+        b = val_u32.to_bytes(4, 'big')
+        rev_b = bytes(CRCUtils._BIT_REVERSE_TABLE[x] for x in b[::-1])
+        return int.from_bytes(rev_b, 'big')
 
     @staticmethod
-    def _u32_to_bytes_be(i):
-        return i.to_bytes(4, 'big')
+    def _reverse_bytes_internal_bits(val_u32: int) -> bytes:
+        """将整数转为字节，并反转每个字节内部的比特位"""
+        b = val_u32.to_bytes(4, 'big')
+        return bytes(CRCUtils._BIT_REVERSE_TABLE[x] for x in b)
 
     @staticmethod
-    def _reverse_bits_in_bytes(b):
-        num = CRCUtils._bytes_to_u32_be(b)
-        rev = 0
-        for i in range(32):
-            if (num >> i) & 1:
-                rev |= 1 << (31 - i)
-        return CRCUtils._u32_to_bytes_be(rev)
-
-    @staticmethod
-    def _gf_multiply(a, b):
+    def _gf2_multiply_mod(a, b):
         result = 0
-        while b:
+        while b != 0:
             if b & 1:
                 result ^= a
-            a <<= 1
             b >>= 1
+            a <<= 1
+            if a >> CRCUtils.POLY_DEGREE:
+                a ^= CRCUtils.POLY_NORMAL
         return result
 
-    @staticmethod
-    def _gf_divide(dividend, divisor):
-        if divisor == 0:
-            return 0
-        quotient = 0
-        remainder = dividend
-        divisor_bits = divisor.bit_length()
-        while remainder.bit_length() >= divisor_bits and remainder != 0:
-            shift = remainder.bit_length() - divisor_bits
-            quotient |= 1 << shift
-            remainder ^= divisor << shift
-        return quotient
-
-    @staticmethod
-    def _gf_mod(dividend, divisor, n):
-        if divisor == 0:
-            return dividend
-        while dividend != 0 and dividend.bit_length() >= divisor.bit_length():
-            shift = dividend.bit_length() - divisor.bit_length()
-            dividend ^= divisor << shift
-        mask = (1 << n) - 1 if n < 64 else 0xFFFFFFFFFFFFFFFF
-        return dividend & mask
-
-    @staticmethod
-    def _gf_multiply_modular(a, b, modulus, n):
-        product = CRCUtils._gf_multiply(a, b)
-        return CRCUtils._gf_mod(product, modulus, n)
-
-    @staticmethod
-    def _gf_modular_inverse(a, m):
-        if a == 0:
-            raise ValueError("Inverse of zero does not exist")
-        old_r, r = m, a
-        old_s, s = 0, 1
-        while r != 0:
-            q = CRCUtils._gf_divide(old_r, r)
-            old_r, r = r, old_r ^ CRCUtils._gf_multiply(q, r)
-            old_s, s = s, old_s ^ CRCUtils._gf_multiply(q, s)
-        if old_r != 1:
-            raise ValueError("Modular inverse does not exist")
-        return old_s
-
-    @staticmethod
-    def _gf_inverse(k, poly):
-        x32 = 0x100000000
-        inverse = CRCUtils._gf_modular_inverse(x32, poly)
-        result = CRCUtils._gf_multiply_modular(k, inverse, poly, 32)
-        return result
-
-    @staticmethod
-    def _xor_bytes(a: bytes, b: bytes) -> bytes:
-        return bytes(x ^ y for x, y in zip(a, b))
-
-    @staticmethod
-    def _reverse_byte_bits(byte):
-        return int('{:08b}'.format(byte)[::-1], 2)
-
-def get_environment_info():
+def get_environment_info(ignore_tk: bool = False):
     """Collects and formats key environment details."""
     
     # --- Attempt to import libraries and get their versions ---
@@ -262,23 +217,32 @@ def get_environment_info():
         pillow_version = "Not installed"
 
     try:
-        import tkinter
-        tk_version = tkinter.Tcl().eval('info patchlevel') or "Installed"
+        if not ignore_tk:
+            import tkinter
+            tk_version = tkinter.Tcl().eval('info patchlevel') or "Installed"
+        else:
+            tk_version = "Ignored"
     except ImportError:
         tk_version = "Not installed"
     except tkinter.TclError:
         tk_version = "Unknown"
 
     try:
-        import tkinterdnd2
-        tkinterdnd2_version = tkinterdnd2.TkinterDnD.TkdndVersion or "Installed"
+        if not ignore_tk:
+            import tkinterdnd2
+            tkinterdnd2_version = tkinterdnd2.TkinterDnD.TkdndVersion or "Installed"
+        else:
+            tkinterdnd2_version = "Ignored"
     except ImportError:
         tkinterdnd2_version = "Not installed"
     except AttributeError:
         tkinterdnd2_version = "Unknown"
 
     try:
-        tb_version = importlib.metadata.version('ttkbootstrap')
+        if not ignore_tk:
+            tb_version = importlib.metadata.version('ttkbootstrap')
+        else:
+            tb_version = "Ignored"
     except ImportError:
         tb_version = "Not installed"
     except (AttributeError, importlib.metadata.PackageNotFoundError):
@@ -378,7 +342,7 @@ def get_search_resource_dirs(base_game_dir: Path, auto_detect_subdirs: bool = Tr
             "GameData/Android",
             "Preload/Android",
             ]
-        return [base_game_dir / suffix for suffix in suffixes]
+        return [base_game_dir / suffix for suffix in suffixes if (base_game_dir / suffix).is_dir()]
     else:
         return [base_game_dir]
 
@@ -564,10 +528,10 @@ class SpineUtils:
                     log=log
                 )
                 if skel_success:
-                    log(f'  > {t("log.spine.skel_conversion_success", name=resource_name)}')
+                    log(f'  > {t("log.spine.skel_conversion_success")}')
                     return upgraded_content
                 else:
-                    log(f'  ❌ {t("log.spine.skel_conversion_failed_using_original", name=resource_name)}')
+                    log(f'  ❌ {t("log.spine.skel_conversion_failed")}')
 
         except Exception as e:
             log(f'    ❌ {t("log.error_detail", error=e)}')
@@ -579,88 +543,88 @@ class SpineUtils:
         input_atlas: Path,
         output_dir: Path,
         log: LogFunc = no_log,
-    ) -> tuple[bool, list[str]]:
+    ) -> bool:
         """使用 SpineAtlas 转换图集数据为 Spine 3 格式。"""
-        from SpineAtlas import Atlas, ReadAtlasFile, AtlasScale
-        processed_pngs = []
+        from SpineAtlas import Atlas, ReadAtlasFile
         try:
             log(f'    > {t("log.spine.converting_atlas", name=input_atlas.name)}')
             
             atlas: Atlas = ReadAtlasFile(str(input_atlas))
             atlas.version = False
             
-            for page in atlas.atlas:
-                if page.scale != 1.0:
-                    log(f'      > {t("log.spine.rescaling_page", page=page.png, scale=page.scale)}')
-                    
-                    reverse_scale = 1.0 / page.scale
-                    AtlasScale(page, reverse_scale, reverse_scale)
-                    page.scale = 1.0
-                    
-                    img_path = input_atlas.parent / page.png
-                    if img_path.exists():
-                        with Image.open(img_path) as img:
-                            w, h = img.size
-                            new_w = int(w * reverse_scale)
-                            new_h = int(h * reverse_scale)
-                            resized_img = img.resize((new_w, new_h), Image.BICUBIC)
-                            resized_img.save(output_dir / page.png)
-                            page.w = new_w
-                            page.h = new_h
-                            processed_pngs.append(page.png)
-            
-            output_path = output_dir / input_atlas.name
-            atlas.SaveAtlas(str(output_path))
-            return True, processed_pngs
+            atlas.ReScale()
+            atlas.SaveAtlas4_0Scale(outPath=output_dir)
+
+            return True
         except Exception as e:
             log(f'      ✗ {t("log.error_detail", error=e)}')
-            return False, processed_pngs
+            return False
 
     @staticmethod
-    def handle_group_downgrade(
+    def process_skel_downgrade(
         skel_path: Path,
-        atlas_path: Path,
         output_dir: Path,
-        skel_converter_path: Path,
+        converter_path: Path,
         target_version: str,
         log: LogFunc = no_log,
     ) -> None:
-        """
-        处理单个Spine资产组（skel, atlas, pngs）的降级。
-        始终尝试进行降级操作。
-        """
+        """处理单个 .skel 文件的降级。"""
         version = SpineUtils.get_skel_version(skel_path, log)
         log(f"    > {t('log.spine.version_detected_downgrading', version=version or t('common.unknown'))}")
-        with tempfile.TemporaryDirectory() as conv_out_dir_str:
-            conv_output_dir = Path(conv_out_dir_str)
+        
+        output_skel_path = output_dir / skel_path.name
+        skel_success, _ = SpineUtils.run_skel_converter(
+            input_data=skel_path,
+            converter_path=converter_path,
+            target_version=target_version,
+            output_path=output_skel_path,
+            log=log
+        )
+        if skel_success:
+            log(f'    > {t("log.spine.skel_conversion_success", name=skel_path.name)}')
+        else:
+            log(f'    ✗ {t("log.spine.skel_conversion_failed")}')
 
-            atlas_success, processed_pngs = SpineUtils.run_atlas_downgrader(
-                atlas_path, conv_output_dir, log
-            )
+    @staticmethod
+    def process_atlas_downgrade(
+        atlas_path: Path,
+        output_dir: Path,
+        log: LogFunc = no_log,
+    ) -> None:
+        """处理单个 .atlas 文件的降级，自动处理相关的 png 文件。"""
+        atlas_success = SpineUtils.run_atlas_downgrader(
+            atlas_path, output_dir, log
+        )
 
-            if atlas_success:
-                log(f'    > {t("log.spine.atlas_downgrade_success")}')
-                
-                for png_file in atlas_path.parent.glob("*.png"):
-                    if png_file.name not in processed_pngs:
-                        shutil.copy2(png_file, conv_output_dir / png_file.name)
-                
-                for converted_file in conv_output_dir.iterdir():
-                    shutil.copy2(converted_file, output_dir / converted_file.name)
-                    log(f"      - {converted_file.name}")
-            else:
-                log(f'    ✗ {t("log.spine.atlas_downgrade_failed")}.')
+        if atlas_success:
+            log(f'    > {t("log.spine.atlas_downgrade_success")}')
+        else:
+            log(f'    ✗ {t("log.spine.atlas_downgrade_failed")}.')
 
-            output_skel_path = output_dir / skel_path.name
-            skel_success, _ = SpineUtils.run_skel_converter(
-                input_data=skel_path,
-                converter_path=skel_converter_path,
-                target_version=target_version,
-                output_path=output_skel_path,
-                log=log
-            )
-            if not skel_success:
-                log(f'    ✗ {t("log.spine.skel_conversion_failed_using_original")}')
+    @staticmethod
+    def unpack_atlas_frames(
+        atlas_path: Path,
+        output_dir: Path,
+        log: LogFunc = no_log,
+    ) -> bool:
+        """将 atlas 文件解包为单独的 PNG 帧图片。"""
+        from SpineAtlas import ReadAtlasFile
+        try:
+            log(f'    > {t("log.spine.unpacking_atlas", name=atlas_path.name)}')
+            
+            atlas = ReadAtlasFile(str(atlas_path))
+            atlas.ReScale()
+            frames_output_dir = output_dir / "images"
+            frames_output_dir.mkdir(parents=True, exist_ok=True)
+            
+            atlas.SaveFrames(path=str(frames_output_dir), mode='Normal')
+            
+            log(f'    > {t("log.spine.atlas_unpack_success", path=frames_output_dir)}')
+            return True
+        except Exception as e:
+            log(f'    ✗ {t("log.spine.atlas_unpack_failed")}: {e}')
+            return False
+
 
     @staticmethod
     def normalize_legacy_spine_assets(source_folder_path: Path, log: LogFunc = no_log) -> Path:

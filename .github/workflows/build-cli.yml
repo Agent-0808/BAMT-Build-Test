@@ -1,16 +1,16 @@
-name: build executable file
+name: build CLI executable file
 
 on:
   push:
     tags:
       - 'v*' # Trigger when push tag start with v (etc. v0.1.0)
   workflow_dispatch: # Manual
-  
+
 permissions:
   contents: write
-  
+
 jobs:
-  build-windows:
+  build-windows-cli:
     runs-on: windows-latest
 
     steps:
@@ -80,21 +80,19 @@ jobs:
               print(f"version={version}", file=fh)
               print(f"file_version={file_version}", file=fh)
 
-      - name: Build Executable with Nuitka
+      - name: Build CLI Executable with Nuitka
         uses: Nuitka/Nuitka-Action@main
         with:
           nuitka-version: main
-          script-name: src/ba_modding_toolkit/__main__.py
+          script-name: src/ba_modding_toolkit/cli/__main__.py
           mode: onefile
-          jobs: 1
-          lto: "no"
 
           # 元数据
           windows-icon-from-ico: src/ba_modding_toolkit/assets/eligma.ico
-          product-name: "BA Modding Toolkit"
+          product-name: "BA Modding Toolkit CLI"
           product-version: ${{ steps.get_version.outputs.file_version }}
           file-version: ${{ steps.get_version.outputs.file_version }}
-          file-description: "BA Modding Toolkit"
+          file-description: "BA Modding Toolkit - Command Line Interface"
           company-name: "Agent-0808"
           copyright: "Copyright ©2025-2026 Agent-0808. Licensed under GPLv3."
           trademarks: "Blue Archive ©NEXON Games Co., Ltd. & Yostar, Inc. This tool is unofficial and not endorsed by them."
@@ -102,7 +100,8 @@ jobs:
           low-memory: true
           # 经测试使用mingw64可以避免堆内存问题
           mingw64: true
-          enable-plugins: tk-inter
+          # CLI 版本不需要 tk-inter 插件
+          # enable-plugins: tk-inter
           # 包含代码依赖包
           include-package: |
             ba_modding_toolkit
@@ -116,33 +115,33 @@ jobs:
           include-data-dir: |
             src/ba_modding_toolkit/assets=ba_modding_toolkit/assets
             src/ba_modding_toolkit/locales=ba_modding_toolkit/locales
-          windows-console-mode: disable
+          # CLI 版本需要控制台模式
+          windows-console-mode: force
           output-dir: build
-          output-file: "BA-Modding-Toolkit.exe"
+          output-file: "BAMT-CLI.exe"
           assume-yes-for-downloads: true
 
       # 整理发布文件夹
       - name: Prepare Release Directory
         run: |
-          New-Item -ItemType Directory -Path "publish" -Force
-          Copy-Item -Path "build/BA-Modding-Toolkit.exe" -Destination "publish/"
-          Copy-Item -Path "src/ba_modding_toolkit/locales" -Destination "publish/locales" -Recurse
+          New-Item -ItemType Directory -Path "publish-cli" -Force
+          Copy-Item -Path "build/BAMT-CLI.exe" -Destination "publish-cli/"-Recurse
         shell: powershell
 
       # 上传 Artifact
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BA-Modding-Toolkit-Windows-Build
-          path: publish/
+          name: BAMT-CLI-Windows-Build
+          path: publish-cli/
 
       # 打包成 Zip
       - name: Zip Release Asset (When Trigger With Tag)
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           $tag_name = "${{ github.ref_name }}"
-          cd publish
-          Compress-Archive -Path * -DestinationPath "../BA-Modding-Toolkit-$tag_name.zip"
+          cd publish-cli
+          Compress-Archive -Path * -DestinationPath "../BAMT-CLI-$tag_name.zip"
         shell: powershell
 
       # 上传 Zip
@@ -150,4 +149,4 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          files: BA-Modding-Toolkit-${{ github.ref_name }}.zip
+          files: BAMT-CLI-${{ github.ref_name }}.zip
