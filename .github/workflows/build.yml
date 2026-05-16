@@ -87,7 +87,6 @@ jobs:
           script-name: src/ba_modding_toolkit/__main__.py
           mode: onefile
           jobs: 1
-          lto: "no"
 
           # 元数据
           windows-icon-from-ico: src/ba_modding_toolkit/assets/eligma.ico
@@ -102,16 +101,18 @@ jobs:
           low-memory: true
           # 经测试使用mingw64可以避免堆内存问题
           mingw64: true
+          lto: "no"
           enable-plugins: tk-inter
           # 包含代码依赖包
           include-package: |
             ba_modding_toolkit
-            UnityPy.resources
+            UnityPy
           # 包含依赖包的数据文件
           include-package-data: |
             ba_modding_toolkit
             UnityPy
             archspec
+          nofollow-import-to: UnityPy.classes.generated  
           # 包含资源目录
           include-data-dir: |
             src/ba_modding_toolkit/assets=ba_modding_toolkit/assets
