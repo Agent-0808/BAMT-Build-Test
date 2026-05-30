@@ -18,14 +18,14 @@ jobs:
           - name: GUI
             artifact-name: BA-Modding-Toolkit-Windows-Build
             exe-name: BA-Modding-Toolkit.exe
-            script-name: ba_modding_toolkit
+            script-name: ba_modding_toolkit/__main__.py
             console-mode: disable
             product-name: "BA Modding Toolkit"
             file-description: "BA Modding Toolkit"
           - name: CLI
             artifact-name: BAMT-CLI-Windows-Build
             exe-name: BAMT-CLI.exe
-            script-name: ba_modding_toolkit/cli
+            script-name: ba_modding_toolkit/cli/__main__.py
             console-mode: force
             product-name: "BA Modding Toolkit CLI"
             file-description: "BA Modding Toolkit - Command Line Interface"
@@ -103,7 +103,6 @@ jobs:
           working-directory: src
           script-name: ${{ matrix.script-name }}
           mode: onefile
-          python-flag: "-m"
 
           # 元数据
           windows-icon-from-ico: ba_modding_toolkit/assets/eligma.ico
