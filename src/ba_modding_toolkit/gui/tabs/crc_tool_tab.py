@@ -7,11 +7,12 @@ from pathlib import Path
 import shutil
 
 from ...i18n import t
+from ...utils import CRCUtils
+from ...searching import get_search_dirs
+from ...naming import parse_filename
 from ..base_tab import TabFrame
 from ..components import DropZone, UIComponents, SettingRow
 from ..utils import replace_file
-from ...utils import CRCUtils, get_search_resource_dirs
-from ...naming import parse_filename
 
 class CrcToolTab(TabFrame):
     def create_widgets(self):
@@ -27,11 +28,12 @@ class CrcToolTab(TabFrame):
 
         # 目标 CRC 输入框
         self.target_crc_var = tk.StringVar()
+        options_frame = tb.Labelframe(self, text=t("ui.label.options"), padding=5)
+        options_frame.pack(fill=tk.X, pady=(5,0))
         SettingRow.create_entry_row(
-            self,
+            options_frame,
             label=t("ui.label.target_crc"),
             text_var=self.target_crc_var,
-            placeholder_text=t("ui.crc_tool.target_crc_placeholder"),
             expand=True
         )
 
@@ -83,7 +85,7 @@ class CrcToolTab(TabFrame):
             return
 
         base_game_dir = Path(game_dir_str)
-        search_dirs = get_search_resource_dirs(base_game_dir, self.app.auto_detect_subdirs_var.get())
+        search_dirs = get_search_dirs(base_game_dir)
 
         for directory in search_dirs:
             if not directory.is_dir():

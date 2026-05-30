@@ -177,27 +177,34 @@ class SettingsDialog(tb.Toplevel):
         """初始化Spine设置"""
         section = self._create_section(t("ui.settings.group_spine"))
 
-        SettingRow.create_switch(
-            section,
-            label=t("option.spine_conversion"),
-            variable=self.app.enable_spine_conversion_var,
-            tooltip=t("option.spine_conversion_info")
-        )
-
-        SettingRow.create_entry_row(
-            section,
-            label=t("option.spine_target_version"),
-            text_var=self.app.target_spine_version_var,
-            placeholder_text=t("ui.label.spine_version"),
-            tooltip=t("option.spine_target_version_info")
-        )
-
         SettingRow.create_path_selector(
             section,
             label=t("option.skel_converter_path"),
             path_var=self.app.spine_converter_path_var,
             select_cmd=self.select_spine_converter_path,
             tooltip=t("option.skel_converter_path_info")
+        )
+
+        meta = self.app._config_specs.get("enable_spine_conversion_var")
+        SettingRow.create_switch(
+            section,
+            label=t("option.spine_conversion"),
+            variable=self.app.enable_spine_conversion_var,
+            tooltip=t("option.spine_conversion_info"),
+            app=self.app,
+            depends_on=meta.depends_on if meta else None,
+            on_click_disabled=self.app.show_spine_converter_download_guide
+        )
+
+        meta_version = self.app._config_specs.get("target_spine_version_var")
+        SettingRow.create_entry_row(
+            section,
+            label=t("option.spine_target_version"),
+            text_var=self.app.target_spine_version_var,
+            tooltip=t("option.spine_target_version_info"),
+            app=self.app,
+            depends_on=meta_version.depends_on if meta_version else None,
+            on_click_disabled=self.app.show_spine_converter_download_guide
         )
 
     def _init_footer_buttons(self):
@@ -238,7 +245,7 @@ class SettingsDialog(tb.Toplevel):
     def load_config(self):
         """加载配置文件并更新UI"""
         if self.app.config_manager.load_config(self.app):
-            self.app.logger.log(t("status.ready"))
+            self.app.logger.log(t("log.config.loaded"))
             messagebox.showinfo(t("common.success"), t("message.config.loaded"))
         else:
             self.app.logger.log(t("log.config.load_failed"))

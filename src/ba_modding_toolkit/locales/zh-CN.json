@@ -11,9 +11,8 @@
 		"error": "错误",
 		"warning": "警告",
 		"tip": "提示",
+		"3rd_party": "第三方功能",
 		"processing": "处理中...",
-		"done": "完成",
-		"all": "全部",
 		"fail": "失败",
 		"result": "结果",
 		"unknown": "未知",
@@ -25,9 +24,6 @@
 		"browse_folder": "浏览文件夹...",
 		"select": "选择",
 		"open": "打开",
-		"enable": "启用",
-		"disable": "禁用",
-		"add": "添加",
 		"add_files": "添加文件",
 		"add_folder": "添加文件夹",
 		"remove": "移除",
@@ -35,7 +31,6 @@
 		"clear": "清除",
 		"clear_list": "清空列表",
 		"replace_original": "覆盖原文件",
-		"create_backup": "创建备份",
 		"print": "打印",
 		"start": "开始",
 		"update": "更新",
@@ -80,19 +75,21 @@
 		"auto_search": "自动搜索对应文件",
 		"auto_search_info": "",
 		"game_root_dir": "游戏根目录",
-		"game_root_dir_info": "设置游戏安装目录，用于自动寻找原版的 Bundle 文件。\n程序能够自动检测以下路径的子目录：\n- BlueArchive_Data/StreamingAssetsPUB/Resource/GameData/Windows\n- BlueArchive_Data/StreamingAssetsPUB/Resource/Preload/Windows\n- GameData/Windows\n- Preload/Windows\n- GameData/Android\n- Preload/Android",
+		"game_root_dir_info": "设置游戏安装目录，用于自动寻找原版的 Bundle 文件。\n程序能够自动检测以下路径的子目录：\n- BlueArchive_Data/StreamingAssets/PUB/Resource/GameData/Windows\n- BlueArchive_Data/StreamingAssets/PUB/Resource/Preload/Windows\n- GameData/Windows\n- Preload/Windows\n- GameData/Android\n- Preload/Android",
 		"language": "语言 / Language",
-		"language_info": "",
+		"language_info": "程序显示的语言。\n更改后需要重启程序才能生效。",
 		"output_dir": "输出目录",
-		"output_dir_info": "",
+		"output_dir_info": "输出本程序生成文件的目录",
 		"skel_converter_path": "Skel 转换器路径",
 		"skel_converter_path_info": "SpineSkeletonDataConverter.exe 文件的路径",
 		"match_strategy": "匹配策略",
 		"match_strategy_info": "选择资源匹配策略：\n- path_id: 适用于同版本文件，替换最准确\n- cont_name_type: 使用容器+名称+类型匹配，适用于跨版本迁移（国际服与日服之间）\n- name_type: 使用名称+类型匹配",
-		"enable_bleed": "启用 Bleed 处理",
+		"enable_bleed": "溢出",
 		"enable_bleed_info": "为图片文件进行 Bleed 操作\n如果打包后的图片在游戏中出现黑色、锯齿状边缘，建议开启此选项。",
-		"enable_spine38_name_fix": "修正旧版 Spine 文件名",
-		"enable_spine38_name_fix_info": "将旧版 Spine 导出的文件名格式修复为新版本格式\n例如：CH0808_home2.png → CH0808_home_2.png"
+		"enable_spine38_name_fix": "重命名旧版 Spine 文件名",
+		"enable_spine38_name_fix_info": "将旧版 Spine 导出的文件名格式重命名为新版本格式\n例如：CH0808_home2.png → CH0808_home_2.png",
+		"max_workers": "并行线程数",
+		"max_workers_info": "同时处理的 Mod 文件数量。\n增加数量可提高处理速度，但会增加内存占用。"
 	},
 	"file_type": {
 		"executable": "可执行文件",
@@ -115,7 +112,6 @@
 		"no_file_selected": "未选择文件。",
 		"list_empty": "列表为空，请先添加项目。",
 		"drop_single_file": "请一次只拖放一个文件。",
-		"drop_single_folder": "请一次只拖放一个文件夹。",
 		"missing_paths": "请确保已设置所有必要的路径",
 		"missing_asset_type": "请至少选择一种资源类型。",
 		"process_success": "处理成功！",
@@ -137,9 +133,7 @@
 			"language_changed": "语言设置已更改。\n请保存配置并重启程序以使更改生效。\n是否立即保存当前配置并关闭程序？"
 		},
 		"packer": {
-			"require_folder_with_assets": "请输入包含了要打包的资源文件的文件夹。",
-			"missing_paths": "请确保已选择目标 Bundle、待打包资源文件夹，并在全局设置中指定了输出目录。",
-			"generated_file_not_found_for_replace": "找不到已生成的替换文件。\n请先成功执行一次\"生成替换文件\"。",
+			"missing_paths": "请确保已选择目标 Bundle 与待打包资源，并在全局设置中指定了输出目录。",
 			"load_target_bundle_failed": "无法加载目标 Bundle 文件，即使在尝试移除潜在的 CRC 补丁后也是如此。请检查文件是否损坏。",
 			"no_supported_files_found": "在指定文件夹中没有找到任何支持的文件 ({extensions})。",
 			"no_matching_assets_to_pack": "没有找到任何名称匹配的资源进行打包。",
@@ -158,11 +152,8 @@
 			"match_no": "CRC值匹配: ❌否",
 			"correction_failed_file_not_generated": "CRC 修正失败。最终文件 \"{name}\" 未能生成。"
 		},
-		"spine": {
-			"missing_converter_tool": "已启用 Spine 降级，但未指定有效的 SpineDataConverter.exe 路径。"
-		},
+		"spine": {},
 		"search": {
-			"date_pattern_not_found": "无法在文件名 \"{filename}\" 中找到日期模式 (YYYY-MM-DD)，无法确定用于匹配的文件前缀。",
 			"prefix_extracted": "前缀提取成功",
 			"check_file_exists": "请检查 \"{path}\" 是否存在。",
 			"no_matching_files_in_dir": "在指定目录中未找到任何匹配的文件。",
@@ -170,33 +161,34 @@
 			"no_comparable_assets": "旧版Mod文件中不包含可比较的资源。",
 			"new_file_confirmed": "已确定新版文件: {name}",
 			"no_matching_asset_found": "在所有候选文件中都未找到与旧 Mod 资源名称匹配的资源。无法确定正确的新版文件。",
-			"found_multiple_matches": "找到 {count} 个匹配的文件"
+			"found_multiple_matches": "找到 {count} 个匹配的文件",
+			"filename_parse_failed": "解析文件名失败"
 		},
 		"extractor": {
 			"no_assets_found": "未找到指定类型的可提取资源。",
 			"extraction_complete": "提取完成，共输出 {count} 个文件。"
 		},
 		"mod_update": {
-			"no_matching_assets_to_replace": "没有找到任何名称匹配的资源进行替换，无法继续更新。",
 			"success": "一键更新成功！",
-			"migration_failed": "资源迁移过程失败，请检查日志获取详细信息。",
 			"no_assets_extracted": "没有资源被提取",
 			"no_targets_processed": "没有目标文件被成功处理",
 			"all_targets_unchanged": "所有目标文件内容均未变化，无需更新"
 		},
 		"legacy_convert": {
-			"load_global_failed": "无法加载国际服源文件",
-			"jp_to_global_success": "JP -> Global 转换成功！\n已替换 {asset_count} 个 资源",
-			"global_to_jp_success": "Global -> JP 转换成功！\n已替换 {bundle_count} 个 Bundle，{asset_count} 个资源",
+			"modern_to_legacy_success": "新版 -> 旧版 转换成功！\n已替换 {asset_count} 个 资源",
+			"legacy_to_modern_success": "旧版 -> 新版 转换成功！\n已替换 {bundle_count} 个 Bundle，{asset_count} 个资源",
 			"conversion_error": "转换过程中发生错误:\n{error}",
-			"load_global_source_failed": "无法加载国际服源文件",
 			"no_assets_in_source": "源文件中未找到任何可提取资源，无法进行转换。",
-			"no_assets_matched": "未找到任何匹配的资源，无法进行转换。"
+			"no_assets_matched": "未找到任何匹配的资源，无法进行转换。",
+			"load_legacy_failed": "无法加载旧版文件"
 		},
 		"save_error": "保存文件时发生错误: {error}",
 		"replace_result": "已完成替换！成功：{success}，失败：{fail}",
 		"batch": {
 			"success": "批量处理完成！\n成功: {success}，失败: {fail}"
+		},
+		"3rd_party": {
+			"skel_converter_required": "SpineSkeletonDataConverter 程序未设置或路径无效。\n如果要启用该功能，请您自行下载 SpineSkeletonDataConverter 程序，并遵守其协议\n\n是否要在浏览器中打开下载页面？\n{url}"
 		}
 	},
 	"status": {
@@ -266,7 +258,7 @@
 			"atlas_unpack_failed": "Atlas 解包失败"
 		},
 		"packer": {
-			"start_packing": "开始从资源文件夹打包...",
+			"start_packing": "开始打包资源...",
 			"pack_success_path": "打包成功。文件已输出至: {path}",
 			"found_files_to_process": "找到 {count} 个待处理文件，正在扫描 bundle 并进行替换...",
 			"no_assets_packed": "没有执行任何成功的资源打包。",
@@ -280,7 +272,6 @@
 			"loaded_original": "已加载原始文件: {file}",
 			"loaded_modified": "已加载待修正文件: {file}",
 			"start_correction": "开始CRC修正过程...",
-			"check_failed": "检测CRC值时发生错误: {error}",
 			"match_no_correction_needed": "CRC值已匹配，无需修正",
 			"correction_success": "CRC 修正成功！",
 			"correction_failed": "CRC修正失败",
@@ -296,13 +287,9 @@
 			"move_to_output": "移动提取的文件到输出目录",
 			"process_spine_downgrade": "处理Spine资产并降级",
 			"process_atlas_unpack": "解包 Atlas 帧图片",
-			"copy_standalone_files": "复制独立文件",
-			"asset_migration": "资源迁移",
 			"extracting_from_global": "正在从国际服文件提取资源",
 			"extracting_from_jp": "正在从日服文件提取资源",
 			"applying_to_global": "正在应用到国际服文件",
-			"conversion_complete": "转换完成",
-			"copy_converted_files": "复制成功转换的文件",
 			"applying_to_targets": "应用到目标文件组",
 			"extracting_patches": "正在提取补丁"
 		},
@@ -313,11 +300,10 @@
 			"lz4": "LZ4"
 		},
 		"search": {
-			"searching_for_file": "正在为 \"{name}\" 搜索对应文件...",
 			"searching_for_file_group": "正在为 {count} 个源文件搜索对应目标文件...",
 			"file_prefix": "文件前缀: \"{prefix}\"",
+			"file_core": "文件核心名称: \"{core}\"",
 			"found_candidates": "找到 {count} 个候选文件，正在验证内容...",
-			"old_mod_asset_count": "旧 Mod 包含 {count} 个资源。",
 			"source_mod_asset_count": "源文件组包含 {count} 个资源。",
 			"checking_candidate": "正在检查: {name}",
 			"find_failed": "查找失败: {message}",
@@ -347,22 +333,14 @@
 			"strategy_skipped_unchanged": "策略 \"{name}\"：所有文件内容未变化，跳过生成"
 		},
 		"mod_update": {
-			"using_old_mod": "使用旧版 Mod: {name}",
-			"using_new_resource": "使用新版资源: {name}",
-			"migration_complete": "资源迁移完成，共处理 {count} 个资源。",
 			"all_processes_complete": "全部流程处理完成！共处理 {count} 个资源。",
 			"updating": "正在更新……",
-			"all_resources_unchanged": "所有资源内容未变化（{count} 个），跳过生成输出文件",
 			"source_files": "源文件组 ({count} 个文件)",
 			"target_files": "目标文件组 ({count} 个文件)",
 			"pool_built": "共有 {count} 个匹配资源",
 			"target_unchanged": "目标文件内容未变化: {name}（{count} 个资源），跳过",
 			"target_processed": "目标文件处理完成: {name}（替换 {applied} 个资源）",
-			"no_assets_extracted": "无法从源文件中提取任何资源",
-			"no_targets_processed": "没有目标文件被成功处理",
-			"all_targets_unchanged": "所有目标文件内容均未变化，无需更新",
-			"no_matching_assets_to_replace": "没有找到任何名称匹配的资源进行替换，无法继续更新。",
-			"migration_failed": "资源迁移过程失败，请检查日志获取详细信息。"
+			"all_targets_unchanged": "所有目标文件内容均未变化，无需更新"
 		},
 		"batch": {
 			"summary": "批量处理完成！总计: {total}，成功: {success}，失败: {fail}",
@@ -377,16 +355,14 @@
 		"legacy_convert": {
 			"found_match": "成功找到: {path}",
 			"searching_jp_counterparts": "正在为 \"{name}\" 搜索对应的JP文件...",
-			"global_base_file": "国际服源文件: {name}",
-			"jp_files_count": "选中的日服文件数量: {count}",
 			"extracted_count_from_jp": "从日服文件提取了 {count} 个资源",
 			"no_assets_replaced": "未替换任何资源",
 			"starting_conversion": "开始转换...",
-			"global_source_file": "国际服源文件: {name}",
 			"extracted_count": "提取了 {count} 个资源。",
 			"conversion_complete": "转换完成！",
-			"auto_search_no_game_dir": "自动查找失败：未设置游戏资源目录。",
-			"file_unchanged": "文件内容未变化: {name}（{count} 个资源），跳过生成"
+			"file_unchanged": "文件内容未变化: {name}（{count} 个资源），跳过生成",
+			"legacy_source_file": "旧版源文件: {name}",
+			"modern_files_count": "选中的新版文件数量: {count}"
 		},
 		"summary": {
 			"title": "处理总结",
@@ -424,7 +400,7 @@
 			"crc_tool": "CRC 工具",
 			"asset_packer": "资源打包",
 			"asset_extractor": "资源提取",
-			"legacy_conversion": "旧版/新版格式转换",
+			"legacy_conversion": "旧版/新版转换",
 			"batch_legacy": "批量处理旧版"
 		},
 		"settings": {
@@ -437,8 +413,6 @@
 			"group_paths": "路径设置"
 		},
 		"mod_update": {
-			"mode_single": "单个更新",
-			"mode_batch": "批量更新",
 			"placeholder_old": "拖放待更新或移植的 Mod 文件到此处\n或点击下方按钮选择",
 			"placeholder_new": "选择修改后文件后将自动查找原始文件\n或手动拖放/浏览文件",
 			"placeholder_batch": "将文件或文件夹拖放到此处...",
@@ -446,8 +420,7 @@
 		},
 		"crc_tool": {
 			"placeholder_modified": "拖放待修正CRC值的 Bundle\n或点击下方按钮选择",
-			"placeholder_origin": "选择待修正文件后将自动查找原始文件\n或手动拖放/浏览文件",
-			"target_crc_placeholder": "选择待修正文件后自动填充"
+			"placeholder_origin": "选择待修正文件后将自动查找原始文件\n或手动拖放/浏览文件"
 		},
 		"packer": {
 			"placeholder_assets": "将待打包资源（.png/.skel/.atlas等）拖放到此处",
@@ -481,15 +454,10 @@
 			"contains": "包含 {count} 个文件: {types}"
 		},
 		"label": {
-			"custom_resource_dir": "自定义资源目录",
-			"source_file": "源文件",
-			"target_file": "目标文件",
 			"mod_file": "待处理 Mod 文件",
 			"target_resource_bundle": "目标资源 Bundle",
-			"spine_version": "Spine 版本",
 			"search_path": "查找路径:",
-			"game_resource_dir": "游戏资源目录",
-			"assets_folder_to_pack": "待打包资源文件夹",
+			"assets_to_pack": "待打包资源文件",
 			"target_bundle_file": "目标 Bundle 文件",
 			"bundles_to_extract": "待提取资源的 Bundle 文件",
 			"original_file": "原始文件",

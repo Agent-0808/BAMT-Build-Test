@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ...i18n import t
 from ... import core
-from ...utils import get_search_resource_dirs
+from ...searching import get_search_dirs, find_target_bundles
 from ..base_tab import TabFrame
 from ..components import FileListbox, UIComponents
 from ..utils import confirm_and_replace
@@ -98,7 +98,7 @@ class BatchLegacyTab(TabFrame):
         perform_crc = False
 
         if crc_setting == "auto":
-            target_paths, msg = core.find_target_bundles([self.legacy_file_list[0]], search_paths)
+            target_paths, msg = find_target_bundles([self.legacy_file_list[0]], search_paths)
             if not target_paths:
                 self.logger.log(msg)
                 return
@@ -112,7 +112,7 @@ class BatchLegacyTab(TabFrame):
         asset_types_to_replace = self.app.get_asset_types()
 
         base_game_dir = Path(self.app.game_resource_dir_var.get())
-        search_paths = get_search_resource_dirs(base_game_dir, self.app.auto_detect_subdirs_var.get())
+        search_paths = get_search_dirs(base_game_dir)
 
         self.logger.status(t("common.processing"))
 

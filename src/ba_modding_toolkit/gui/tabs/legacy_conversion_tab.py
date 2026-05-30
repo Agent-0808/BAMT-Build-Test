@@ -8,7 +8,7 @@ from enum import IntEnum
 
 from ...i18n import t
 from ... import core
-from ...utils import get_search_resource_dirs
+from ...searching import get_search_dirs, find_target_bundles
 from ..base_tab import TabFrame
 from ..components import DropZone, ModeSwitcher, SettingRow, UIComponents
 from ..dialogs import FileSelectionDialog
@@ -121,13 +121,6 @@ class LegacyConversionTab(TabFrame):
     # --- 自动搜索逻辑 ---
     def _auto_find_modern_files(self):
         """当指定了旧版文件后，自动在资源目录查找所有匹配的文件"""
-        if not self.app.game_resource_dir_var.get():
-            self.logger.log(f'⚠️ {t("log.legacy_convert.auto_search_no_game_dir")}')
-            return
-        if not self.legacy_zone.path:
-            self.logger.log(f'⚠️ {t("log.file.not_exist", path=self.legacy_zone.path)}')
-            return
-
         # 清除旧的文件列表，准备重新搜索
         self.modern_zone.clear()
         self.run_in_thread(self._find_worker)
@@ -135,7 +128,7 @@ class LegacyConversionTab(TabFrame):
     def _find_worker(self):
         self.logger.status(t("status.searching"))
         base_game_dir = Path(self.app.game_resource_dir_var.get())
-        game_search_dirs = get_search_resource_dirs(base_game_dir, self.app.auto_detect_subdirs_var.get())
+        game_search_dirs = get_search_dirs(base_game_dir)
 
         # 搜索日服文件
         modern_files = core.find_all_jp_counterparts(
@@ -168,10 +161,6 @@ class LegacyConversionTab(TabFrame):
 
     def _auto_find_legacy_file(self, reference_file: Path):
         """当指定了参考文件后，自动在资源目录查找对应的旧版文件"""
-        if not self.app.game_resource_dir_var.get():
-            self.logger.log(f'⚠️ {t("log.legacy_convert.auto_search_no_game_dir")}')
-            return
-
         self.run_in_thread(lambda: self._find_legacy_worker(reference_file))
 
     def _find_legacy_worker(self, reference_file: Path):
@@ -182,11 +171,11 @@ class LegacyConversionTab(TabFrame):
         self.master.after(0, lambda: self.legacy_zone.set_searching())
 
         base_game_dir = Path(self.app.game_resource_dir_var.get())
-        search_paths = get_search_resource_dirs(base_game_dir, self.app.auto_detect_subdirs_var.get())
+        search_paths = get_search_dirs(base_game_dir)
 
         # 使用find_target_bundles查找旧版文件
-        found_paths, message = core.find_target_bundles(
-            reference_file,
+        found_paths, message = find_target_bundles(
+            [reference_file],
             search_paths,
             self.logger.log
         )

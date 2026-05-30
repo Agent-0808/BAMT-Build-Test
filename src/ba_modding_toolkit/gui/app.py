@@ -75,6 +75,18 @@ class App(tk.Frame, ConfigMixin):
         self.language_var.set(i18n_manager.lang)
         self.available_languages = i18n_manager.get_available_languages()
 
+    def _set_default_values(self):
+        """重置所有配置变量为默认值"""
+        hints = get_type_hints(self.__class__, include_extras=True)
+        for var_name, hint in hints.items():
+            if not hasattr(hint, '__metadata__'):
+                continue
+
+            meta: ConfigMeta = hint.__metadata__[0]
+            var = getattr(self, var_name)
+            default = meta.default() if callable(meta.default) else meta.default
+            var.set(default)
+
     def create_widgets(self):
         # 使用grid布局确保status_widget固定在底部
         self.master.grid_rowconfigure(0, weight=1)  # 主内容区域可扩展
@@ -193,13 +205,34 @@ class App(tk.Frame, ConfigMixin):
                 target_version=self.spine_downgrade_version_var.get().strip()
             )
 
+    def is_spine_converter_available(self) -> bool:
+        """检查SpineConverter程序路径是否有效"""
+        path = self.spine_converter_path_var.get()
+        if not path:
+            return False
+        return Path(path).exists()
+
+    def check_dependency(self, depends_on: str) -> bool:
+        """检查依赖条件是否满足"""
+        if depends_on == "spine_converter_path_var":
+            return self.is_spine_converter_available()
+        return True
+
+    def show_spine_converter_download_guide(self, parent: tk.Widget | None = None) -> None:
+        """显示SpineConverter下载引导对话框"""
+        url = "https://github.com/wang606/SpineSkeletonDataConverter"
+        result = messagebox.askyesno(
+                t("common.3rd_party"),
+                t("message.3rd_party.skel_converter_required",
+                  url=url),
+                parent=parent or self.master
+            )
+        import webbrowser
+        if result:
+            webbrowser.open(url)
+
     def select_game_resource_directory(self):
-        # 根据复选框状态决定对话框标题
-        if self.auto_detect_subdirs_var.get():
-            title = t("option.game_root_dir")
-        else:
-            title = t("ui.label.custom_resource_dir")
-        select_directory(self.game_resource_dir_var, title, self.logger.log)
+        select_directory(self.game_resource_dir_var, t("option.game_root_dir"), self.logger.log)
         
     def open_game_resource_in_explorer(self):
         open_directory(self.game_resource_dir_var.get(), self.logger.log)

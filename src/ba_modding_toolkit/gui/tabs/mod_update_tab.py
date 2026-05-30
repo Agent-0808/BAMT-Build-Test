@@ -7,10 +7,10 @@ from pathlib import Path
 
 from ...i18n import t
 from ... import core
+from ...searching import get_search_dirs, find_target_bundles
 from ..base_tab import TabFrame
 from ..components import DropZone, UIComponents, SettingRow
 from ..utils import confirm_and_replace
-from ...utils import get_search_resource_dirs
 
 
 class ModUpdateTab(TabFrame):
@@ -88,9 +88,9 @@ class ModUpdateTab(TabFrame):
         self.logger.status(t("status.processing_detailed"))
         
         base_game_dir = Path(self.app.game_resource_dir_var.get())
-        search_paths = get_search_resource_dirs(base_game_dir, self.app.auto_detect_subdirs_var.get())
+        search_paths = get_search_dirs(base_game_dir)
 
-        found_paths, message = core.find_target_bundles(
+        found_paths, message = find_target_bundles(
             self.source_paths,
             search_paths,
             self.logger.log
@@ -105,16 +105,10 @@ class ModUpdateTab(TabFrame):
             self.new_mod_zone.set_error(ui_message)
             self.logger.status(t("status.search_not_found"))
         elif len(found_paths) == 1:
-            self.target_paths = found_paths
             self.new_mod_zone.set_files(found_paths)
-            self.logger.log(t("log.file.loaded", path=found_paths[0]))
-            self.logger.status(t("status.ready"))
         else:
             # 多个匹配文件，直接将所有文件设置为目标组
-            self.target_paths = found_paths
             self.new_mod_zone.set_files(found_paths)
-            self.logger.log(t("message.search.found_multiple_matches", count=len(found_paths)))
-            self.logger.status(t("status.ready"))
 
     def run_update_thread(self):
         if not self.source_paths or not self.target_paths:
@@ -167,6 +161,7 @@ class ModUpdateTab(TabFrame):
             save_options=save_options,
             spine_options=spine_options,
             match_strategy=self.match_strategy_var.get(),
+            skip_unchanged=True, # TODO: 添加设置
             log=self.logger.log,
         )
         

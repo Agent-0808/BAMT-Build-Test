@@ -1,11 +1,12 @@
 # core.py
 
 import traceback
+import threading
 from pathlib import Path
 import shutil
 import tempfile
 from typing import Callable
-from UnityPy.environment import Environment as Env
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from PIL import Image
 
 from .i18n import t
@@ -14,112 +15,13 @@ from .naming import parse_filename
 from .models import (
     NameTypeKey, FilePair,
     AssetKey, AssetContent, AssetType, Patch,
-    KeyGeneratorFunc, LogFunc, PatchResult,
-    MATCH_STRATEGIES, MatchStrategy, SaveOptions, SpineOptions,
+    LogFunc, PatchResult,
+    MatchStrategy, SaveOptions, SpineOptions,
     REPLACEABLE_ASSET_TYPES
 )
 from .bundle import Bundle
+from .searching import find_target_bundles
 
-
-# ====== 寻找对应文件 ======
-
-def find_target_bundles(
-    source_paths: list[Path],
-    game_resource_dir: Path | list[Path],
-    log: LogFunc = no_log,
-) -> tuple[list[Path], str]:
-    """
-    根据源文件组，在游戏资源目录中智能查找对应的目标文件组。
-    
-    Returns:
-        tuple[list[Path], str]: (找到的目标路径列表, 状态消息)
-    """
-    if not source_paths:
-        return [], t("message.search.check_file_exists", path="[]")
-
-    log(t("log.search.searching_for_file_group", count=len(source_paths)))
-
-    # 1. 解析第一个源文件，提取前缀
-    prefix = parse_filename(str(source_paths[0].name)).prefix
-    
-    if not prefix:
-        msg = t("message.search.date_pattern_not_found", filename=source_paths[0].name)
-        log(f'  > {t("common.fail")}: {msg}')
-        return [], msg
-    
-    log(f"  > {t('log.search.file_prefix', prefix=prefix)}")
-    extension = '.bundle'
-    extension_backup = '.backup'
-
-    # 2. 收集所有候选文件
-    search_dirs = [game_resource_dir] if isinstance(game_resource_dir, Path) else game_resource_dir
-    
-    candidates = [
-        file for dir in search_dirs 
-        if dir.exists() and dir.is_dir()
-        for file in dir.iterdir()
-        if file.is_file() and file.name.startswith(prefix) and file.suffix != extension_backup
-    ]
-    
-    if not candidates:
-        msg = t("message.search.no_matching_files_in_dir")
-        log(f'  > {t("common.fail")}: {msg}')
-        return [], msg
-    log(f"  > {t('log.search.found_candidates', count=len(candidates))}")
-
-    # 3. 分析源文件的关键资源特征
-    comparable_types = {AssetType.Texture2D, AssetType.TextAsset, AssetType.Mesh}
-    
-    # 构建源文件组的指纹集合
-    source_fingerprint: set[AssetKey] = set()
-    key_func = MATCH_STRATEGIES['name_type']
-    
-    for src_path in source_paths:
-        src_bundle = Bundle.load(src_path, log)
-        if not src_bundle:
-            continue
-        for obj in src_bundle.env.objects:
-            if obj.type in comparable_types:
-                source_fingerprint.add(key_func(obj))
-
-    if not source_fingerprint:
-        msg = t("message.search.no_comparable_assets")
-        log(f'  > {t("common.fail")}: {msg}')
-        return [], msg
-
-    log(f"  > {t('log.search.source_mod_asset_count', count=len(source_fingerprint))}")
-
-    # 4. 遍历候选文件进行指纹比对，收集所有匹配的文件
-    matched_paths = []
-    for candidate_path in candidates:
-        log(f"  - {t('log.search.checking_candidate', name=candidate_path.name)}")
-        
-        candidate_bundle = Bundle.load(candidate_path, log)
-        if not candidate_bundle:
-            continue
-        
-        # 检查候选包中是否有匹配的资源
-        has_match = False
-        for obj in candidate_bundle.env.objects:
-            if obj.type in comparable_types:
-                candidate_key = key_func(obj)
-                if candidate_key in source_fingerprint:
-                    has_match = True
-                    break
-        
-        if has_match:
-            matched_paths.append(candidate_path)
-            msg = t("message.search.new_file_confirmed", name=candidate_path.name)
-            log(f"  ✅ {msg}")
-    
-    if not matched_paths:
-        msg = t("message.search.no_matching_asset_found")
-        log(f'  > {t("common.fail")}: {msg}')
-        return [], msg
-    
-    msg = t("message.search.found_multiple_matches", count=len(matched_paths))
-    log(f"  > {msg}")
-    return matched_paths, msg
 
 # ====== 资源处理相关 ======
 
@@ -234,11 +136,11 @@ def process_asset_packing(
                 original_filenames[NameTypeKey(f.name, AssetType.TextAsset.name)] = f.name
 
         strategy_name = 'name_type'
-        key_func = MATCH_STRATEGIES[strategy_name]
 
         # 2. 对每个目标 Bundle 应用替换并保存
         file_pairs: list[FilePair] = []
         success_count = 0
+        all_matched_keys: set[AssetKey] = set()
 
         for i, bundle_path in enumerate(bundle_paths):
             if len(bundle_paths) > 1:
@@ -249,7 +151,7 @@ def process_asset_packing(
                 log(f"⚠️ {t('message.packer.load_target_bundle_failed')}: {bundle_path.name}")
                 continue
 
-            result = target_bundle.apply_patch(patch, key_func)
+            result = target_bundle.apply_patch(patch, strategy_name)
 
             if not result.is_success:
                 log(f"⚠️ {t('common.warning')}: {t('log.packer.no_assets_packed')} ({bundle_path.name})")
@@ -262,14 +164,7 @@ def process_asset_packing(
 
             log(f'{t("log.packer.packing_complete", success=result.applied_count, total=original_tasks_count)}')
 
-            if result.unmatched_keys:
-                log(f"⚠️ {t('common.warning')}: {t('log.packer.unmatched_files_warning')}:")
-                for key in sorted(result.unmatched_keys):
-                    if isinstance(key, NameTypeKey):
-                        key_display = f"[{key.type}] {key.name}"
-                    else:
-                        key_display = str(key)
-                    log(f"  - {original_filenames.get(key, key)} ({t('log.packer.attempted_match', key=key_display)})")
+            all_matched_keys.update(result.matched_keys)
 
             output_path = output_dir / bundle_path.name
             save_ok, save_message = target_bundle.save(output_path, save_options)
@@ -281,6 +176,13 @@ def process_asset_packing(
             log(t("log.file.saved", path=output_path))
             file_pairs.append(FilePair(output_path, bundle_path))
             success_count += 1
+
+        # 3. 汇总输出所有bundle都未匹配的资源
+        never_matched_keys = set(patch.keys()) - all_matched_keys
+        if never_matched_keys:
+            log(f"⚠️ {t('common.warning')}: {t('log.packer.unmatched_files_warning')}:")
+            for key in sorted(never_matched_keys):
+                log(f"  - {original_filenames.get(key, key)} ({t('log.packer.attempted_match', key=str(key))})")
 
         if not file_pairs:
             return False, t("message.packer.no_matching_assets_to_pack"), []
@@ -447,29 +349,23 @@ def _migrate_bundle_assets(
     log(t("log.migration.extracting_from_old_bundle", types=', '.join(asset_types_to_replace)))
     old_bundle = Bundle.load(old_bundle_path, log)
     if not old_bundle:
-        return None, PatchResult(0, 0, [], [])
+        return None, PatchResult(0, 0, [], [], [])
     
     log(t("log.migration.loading_new_bundle"))
     new_bundle = Bundle.load(new_bundle_path, log)
     if not new_bundle:
-        return None, PatchResult(0, 0, [], [])
+        return None, PatchResult(0, 0, [], [], [])
 
     # 定义匹配策略
-    strategies: list[tuple[str, KeyGeneratorFunc]] = [
-        ('path_id', MATCH_STRATEGIES['path_id']),
-        ('cont_name_type', MATCH_STRATEGIES['cont_name_type']),
-        ('name_type', MATCH_STRATEGIES['name_type']),
-        # ('container', MATCH_STRATEGIES['container']),
-        # 因为多个Mesh可能共享同一个Container，所以这个策略很可能失效，因此不使用
-    ]
+    strategies: list[MatchStrategy] = ['path_id', 'cont_name_type', 'name_type']
 
-    for name, key_func in strategies:
+    for name in strategies:
         log(f'\n{t("log.migration.trying_strategy", name=name)}')
         
         # 2. 根据当前策略从旧版 bundle 构建"替换清单"
         log(f'  > {t("log.migration.extracting_from_old_bundle_simple")}')
         old_assets_map = old_bundle.extract_patch(
-            asset_types_to_replace, key_func, spine_options
+            asset_types_to_replace, name, spine_options
         )
         
         if not old_assets_map:
@@ -481,7 +377,7 @@ def _migrate_bundle_assets(
         # 3. 根据当前策略应用替换
         log(f'  > {t("log.migration.writing_to_new_bundle")}')
         
-        result = new_bundle.apply_patch(old_assets_map, key_func)
+        result = new_bundle.apply_patch(old_assets_map, name)
         
         # 4. 如果当前策略成功匹配了至少一个资源，就结束
         if result.is_success:
@@ -494,7 +390,7 @@ def _migrate_bundle_assets(
 
     # 5. 所有策略都失败了
     log(f"\n⚠️ {t('common.warning')}: {t('log.migration.all_strategies_failed', types=', '.join(asset_types_to_replace))}")
-    return None, PatchResult(0, 0, [], [])
+    return None, PatchResult(0, 0, [], [], [])
 
 def process_mod_update(
     source_paths: list[Path],
@@ -535,13 +431,12 @@ def process_mod_update(
         # 1. 提取资源 (Extraction)
         log(f'\n--- {t("log.section.extracting_patches")} ---')
         patches: Patch = {}
-        key_func = MATCH_STRATEGIES[match_strategy]
         
         for src in source_paths:
             src_bundle = Bundle.load(src, log)
             if not src_bundle:
                 continue
-            patch = src_bundle.extract_patch(asset_types_to_replace, key_func, spine_options)
+            patch = src_bundle.extract_patch(asset_types_to_replace, match_strategy, spine_options)
             patches.update(patch)
         
         if not patches:
@@ -560,7 +455,7 @@ def process_mod_update(
                 log(f"  ❌ {t('message.load_failed')}: {tgt.name}")
                 continue
             
-            result = tgt_bundle.apply_patch(patches, key_func)
+            result = tgt_bundle.apply_patch(patches, match_strategy)
             total_matched += result.matched_count
             
             if skip_unchanged and result.applied_count == 0 and result.skipped_count > 0:
@@ -591,6 +486,67 @@ def process_mod_update(
         log(traceback.format_exc())
         return False, t("message.error_during_process", error=e), []
 
+def _process_single_mod_update(
+    mod_path: Path,
+    search_paths: list[Path],
+    output_dir: Path,
+    asset_types_to_replace: set[str],
+    save_options: SaveOptions,
+    spine_options: SpineOptions | None,
+    skip_unchanged: bool,
+    match_strategy: MatchStrategy,
+    log: LogFunc,
+) -> tuple[bool, str, list[FilePair]]:
+    """
+    处理单个 mod 文件：查找目标 → 执行更新
+
+    Args:
+        mod_path: 单个 mod 文件路径
+        search_paths: 用于查找新版bundle文件的目录列表
+        output_dir: 输出目录
+        asset_types_to_replace: 需要替换的资源类型集合
+        save_options: 保存和CRC修正的选项
+        spine_options: Spine资源升级的选项
+        skip_unchanged: 是否跳过未变化的文件
+        match_strategy: 匹配策略
+        log: 日志记录函数
+
+    Returns:
+        (success, message, file_pairs)
+        - success=True, message="" 表示处理成功且有输出
+        - success=True, message="unchanged" 表示内容未变化，无输出
+        - success=False, message=错误信息 表示处理失败
+    """
+    new_bundle_paths, find_message = find_target_bundles([mod_path], search_paths, log)
+
+    if not new_bundle_paths:
+        log(f'  ❌ {t("log.search.find_failed", message=find_message)}')
+        return False, t("log.search.find_failed", message=find_message), []
+
+    success, process_message, update_file_pairs = process_mod_update(
+        source_paths=[mod_path],
+        target_paths=new_bundle_paths,
+        output_dir=output_dir,
+        asset_types_to_replace=asset_types_to_replace,
+        save_options=save_options,
+        spine_options=spine_options,
+        log=log,
+        skip_unchanged=skip_unchanged,
+        match_strategy=match_strategy,
+    )
+
+    if success:
+        if process_message in ("unchanged", "all_targets_unchanged"):
+            log(f'  ⏭️ {t("log.batch.process_unchanged", filename=mod_path.name)}')
+            return True, "unchanged", []
+        else:
+            log(f'  ✅ {t("log.batch.process_success", filename=mod_path.name)}')
+            return True, "", update_file_pairs
+    else:
+        log(f'  ❌ {t("log.batch.process_failed", filename=mod_path.name, message=process_message)}')
+        return False, process_message, []
+
+
 def process_batch_mod_update(
     mod_file_list: list[Path],
     search_paths: list[Path],
@@ -598,6 +554,7 @@ def process_batch_mod_update(
     asset_types_to_replace: set[str],
     save_options: SaveOptions,
     spine_options: SpineOptions | None,
+    max_workers: int = 1,
     progress_callback: Callable[[int, int, str], None] | None = None,
     skip_unchanged: bool = False,
     match_strategy: MatchStrategy = 'path_id',
@@ -613,8 +570,9 @@ def process_batch_mod_update(
         asset_types_to_replace: 需要替换的资源类型集合。
         save_options: 保存和CRC修正的选项。
         spine_options: Spine资源升级的选项。
+        max_workers: 并行处理的线程数，默认为1（串行）。
         progress_callback: 进度回调函数，用于更新UI。
-                           接收 (当前索引, 总数, 文件名)。
+                           接收 (已完成数, 总数, 文件名)。
         skip_unchanged: 是否跳过未变化的文件
         match_strategy: 匹配策略，可选 'path_id'、'name_type'、'cont_name_type'
         log: 日志记录函数。
@@ -627,61 +585,92 @@ def process_batch_mod_update(
     success_count = 0
     fail_count = 0
     unchanged_count = 0
-    failed_tasks = []
+    failed_tasks: list[str] = []
     file_pairs: list[FilePair] = []
 
     log("\n" + "=" * 50)
     log(f"📦 {t('log.batch.start')}")
     log(f"  > {t('log.summary.total_files', count=total_files)}")
 
-    # 遍历每个旧Mod文件
-    for i, old_mod_path in enumerate(mod_file_list):
-        current_progress = i + 1
-        filename = old_mod_path.name
-        
-        if progress_callback:
-            progress_callback(current_progress, total_files, filename)
+    if max_workers <= 1:
+        # 串行处理
+        for i, old_mod_path in enumerate(mod_file_list):
+            current_progress = i + 1
+            filename = old_mod_path.name
 
-        log("\n" + "=" * 50)
-        log(t("status.processing_batch", current=current_progress, total=total_files, filename=filename))
+            if progress_callback:
+                progress_callback(current_progress, total_files, filename)
 
-        new_bundle_paths, find_message = find_target_bundles([old_mod_path], search_paths, log)
+            log("\n" + "=" * 50)
+            log(t("status.processing_batch", current=current_progress, total=total_files, filename=filename))
 
-        if not new_bundle_paths:
-            log(f'  ❌ {t("log.search.find_failed", message=find_message)}')
-            fail_count += 1
-            failed_tasks.append(f"{filename} - {t('log.search.find_failed', message=find_message)}")
-            continue
+            success, message, pairs = _process_single_mod_update(
+                mod_path=old_mod_path,
+                search_paths=search_paths,
+                output_dir=output_dir,
+                asset_types_to_replace=asset_types_to_replace,
+                save_options=save_options,
+                spine_options=spine_options,
+                skip_unchanged=skip_unchanged,
+                match_strategy=match_strategy,
+                log=log,
+            )
 
-        # 执行Mod更新处理（将单路径包装为列表传入）
-        success, process_message, update_file_pairs = process_mod_update(
-            source_paths=[old_mod_path],
-            target_paths=new_bundle_paths,
-            output_dir=output_dir,
-            asset_types_to_replace=asset_types_to_replace,
-            save_options=save_options,
-            spine_options=spine_options,
-            log=log,
-            skip_unchanged=skip_unchanged,
-            match_strategy=match_strategy,
-        )
-
-        if success:
-            if process_message == "unchanged" or process_message == "all_targets_unchanged":
-                # 资源未变化，不生成输出文件
-                log(f'  ⏭️ {t("log.batch.process_unchanged", filename=filename)}')
-                unchanged_count += 1
+            if success:
+                if message == "unchanged":
+                    unchanged_count += 1
+                else:
+                    success_count += 1
+                    file_pairs.extend(pairs)
             else:
-                log(f'  ✅ {t("log.batch.process_success", filename=filename)}')
-                success_count += 1
-                # 记录输出文件路径和被替换的原始文件路径
-                file_pairs.extend(update_file_pairs)
-        else:
-            log(f'  ❌ {t("log.batch.process_failed", filename=filename, message=process_message)}')
-            fail_count += 1
-            failed_tasks.append(f"{filename} - {process_message}")
+                fail_count += 1
+                failed_tasks.append(f"{filename} - {message}")
+    else:
+        # 并行处理
+        lock = threading.Lock()
+        completed = 0
 
-    # 批量处理总结
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {}
+            for mod_path in mod_file_list:
+                future = executor.submit(
+                    _process_single_mod_update,
+                    mod_path, search_paths, output_dir,
+                    asset_types_to_replace, save_options,
+                    spine_options, skip_unchanged,
+                    match_strategy, log,
+                )
+                futures[future] = mod_path.name
+
+            for future in as_completed(futures):
+                filename = futures[future]
+                try:
+                    success, message, pairs = future.result()
+                except Exception as e:
+                    with lock:
+                        fail_count += 1
+                        failed_tasks.append(f"{filename} - {t('message.process_failed', error=e)}")
+                        completed += 1
+                    log(t("log.batch.process_failed", filename=filename, message=str(e)))
+                else:
+                    with lock:
+                        if success:
+                            if message == "unchanged":
+                                unchanged_count += 1
+                                log(t("log.batch.process_unchanged", filename=filename))
+                            else:
+                                success_count += 1
+                                file_pairs.extend(pairs)
+                                log(t("log.batch.process_success", filename=filename))
+                        else:
+                            fail_count += 1
+                            failed_tasks.append(f"{filename} - {message}")
+                            log(t("log.batch.process_failed", filename=filename, message=message))
+                        completed += 1
+
+                if progress_callback:
+                    progress_callback(completed, total_files, filename)
+
     log("\n" + "=" * 50)
     log(f"📊 {t('log.batch.summary', total=total_files, success=success_count, fail=fail_count)}")
 
@@ -805,6 +794,7 @@ def process_batch_legacy_batch(
 
 # ====== 日服处理相关 ======
 
+# TODO: 名字不太对
 def find_all_jp_counterparts(
     global_bundle_path: Path,
     search_dirs: list[Path],
@@ -827,7 +817,7 @@ def find_all_jp_counterparts(
     # 1. 从国际服文件名提取前缀
     prefix = parse_filename(global_bundle_path.name).prefix
     if not prefix:
-        log(f'  > ❌ {t("log.search.find_failed")}: {t("message.search.date_pattern_not_found", filename=global_bundle_path.name)}')
+        log(f'  > ❌ {t("log.search.find_failed")}: {t("message.search.filename_parse_failed")}')
         return []
     
     log(f"  > {t('log.search.file_prefix', prefix=prefix)}")
@@ -879,14 +869,13 @@ def process_modern_to_legacy_conversion(
     try:
         log("="*50)
         log(t("log.legacy_convert.starting_conversion"))
-        log(f'  > {t("log.legacy_convert.global_base_file", name=legacy_bundle_path.name)}')
-        log(f'  > {t("log.legacy_convert.jp_files_count", count=len(modern_bundle_paths))}')
+        log(f'  > {t("log.legacy_convert.legacy_source_file", name=legacy_bundle_path.name)}')
+        log(f'  > {t("log.legacy_convert.modern_files_count", count=len(modern_bundle_paths))}')
         
         # 1. 从所有日服包中构建一个完整的"替换清单"
-        log(f'\n--- {t("log.section.extracting_from_jp")} ---')
+        log(f'\n--- {t("log.section.extracting_patches")} ---')
         patch: Patch = {}
-        strategy_name = 'cont_name_type'
-        key_func = MATCH_STRATEGIES[strategy_name]
+        strategy_name: MatchStrategy = 'cont_name_type'
 
         total_files = len(modern_bundle_paths)
         for i, jp_path in enumerate(modern_bundle_paths, 1):
@@ -897,7 +886,7 @@ def process_modern_to_legacy_conversion(
                 continue
             
             assets = modern_bundle.extract_patch(
-                asset_types_to_replace, key_func, None
+                asset_types_to_replace, strategy_name
             )
             patch.update(assets)
 
@@ -912,9 +901,9 @@ def process_modern_to_legacy_conversion(
         log(f'\n--- {t("log.section.applying_to_global")} ---')
         global_bundle = Bundle.load(legacy_bundle_path, log)
         if not global_bundle:
-            return False, t("message.legacy_convert.load_global_failed"), None
+            return False, t("message.legacy_convert.load_legacy_failed"), None
         
-        result = global_bundle.apply_patch(patch, key_func)
+        result = global_bundle.apply_patch(patch, strategy_name)
         
         if not result.is_success:
             log(f"  > ⚠️ {t('log.legacy_convert.no_assets_replaced')}")
@@ -934,7 +923,7 @@ def process_modern_to_legacy_conversion(
         log(f"  ✅ {t('log.file.saved', path=output_path)}")
         log(f"\n🎉 {t('log.legacy_convert.conversion_complete')}")
         file_pair: FilePair = FilePair(output_path, legacy_bundle_path)
-        return True, t("message.legacy_convert.jp_to_global_success", asset_count=result.applied_count), file_pair
+        return True, t("message.legacy_convert.modern_to_legacy_success", asset_count=result.applied_count), file_pair
         
     except Exception as e:
         log(f"\n❌ {t('common.error')}: {t('log.error_detail', error=e)}")
@@ -977,32 +966,28 @@ def process_legacy_to_modern_conversion(
     try:
         log("="*50)
         log(t("log.legacy_convert.starting_conversion"))
-        log(f'  > {t("log.legacy_convert.global_source_file", name=legacy_bundle_path.name)}')
-        log(f'  > {t("log.legacy_convert.jp_files_count", count=len(modern_bundle_paths))}')
+        log(f'  > {t("log.legacy_convert.legacy_source_file", name=legacy_bundle_path.name)}')
+        log(f'  > {t("log.legacy_convert.modern_files_count", count=len(modern_bundle_paths))}')
         
         legacy_bundle = Bundle.load(legacy_bundle_path, log)
         if not legacy_bundle:
-            return False, t("message.legacy_convert.load_global_source_failed"), []
+            return False, t("message.legacy_convert.load_legacy_failed"), []
         
-        log(f'\n--- {t("log.section.extracting_from_global")} ---')
+        log(f'\n--- {t("log.section.extracting_patches")} ---')
 
         # 定义匹配策略
-        strategies: list[tuple[str, KeyGeneratorFunc]] = [
-            ('path_id', MATCH_STRATEGIES['path_id']),
-            ('cont_name_type', MATCH_STRATEGIES['cont_name_type']),
-            ('name_type', MATCH_STRATEGIES['name_type']),
-        ]
+        strategies: list[MatchStrategy] = ['path_id', 'cont_name_type', 'name_type']
 
         total_changes = 0
         total_files = len(modern_bundle_paths)
         file_pairs: list[FilePair] = []  # (输出文件, 原始目标文件)
 
         # 2. 按顺序尝试每种策略
-        for strategy_name, key_func in strategies:
+        for strategy_name in strategies:
             log(f'\n{t("log.migration.trying_strategy", name=strategy_name)}')
 
             patch: Patch = legacy_bundle.extract_patch(
-                asset_types_to_replace, key_func, None
+                asset_types_to_replace, strategy_name
             )
 
             if not patch:
@@ -1018,22 +1003,22 @@ def process_legacy_to_modern_conversion(
             current_failed: list[tuple[str, str]] = []
 
             # 3. 遍历每个日服模板文件进行处理
-            for i, jp_template_path in enumerate(modern_bundle_paths, 1):
-                log(t("log.processing_filename_with_progress", current=i, total=total_files, name=jp_template_path.name))
+            for i, modern_path in enumerate(modern_bundle_paths, 1):
+                log(t("log.processing_filename_with_progress", current=i, total=total_files, name=modern_path.name))
 
-                template_bundle = Bundle.load(jp_template_path, log)
+                template_bundle = Bundle.load(modern_path, log)
                 if not template_bundle:
-                    log(f"  > ❌ {t('message.load_failed')}: {jp_template_path.name}")
-                    current_failed.append((jp_template_path.name, t('message.load_failed')))
+                    log(f"  > ❌ {t('message.load_failed')}: {modern_path.name}")
+                    current_failed.append((modern_path.name, t('message.load_failed')))
                     continue
 
-                result = template_bundle.apply_patch(patch, key_func)
+                result = template_bundle.apply_patch(patch, strategy_name)
 
                 if result.is_success:
                     # 检查是否所有匹配的资源都未变化（只有skipped，没有实际替换）
                     if skip_unchanged and result.applied_count == 0 and result.skipped_count > 0:
-                        log(f"  > ⏭️ {t('log.legacy_convert.file_unchanged', name=jp_template_path.name, count=result.skipped_count)}")
-                        current_skipped.append(jp_template_path.name)
+                        log(f"  > ⏭️ {t('log.legacy_convert.file_unchanged', name=modern_path.name, count=result.skipped_count)}")
+                        current_skipped.append(modern_path.name)
                         # 跳过也算作策略成功，避免继续尝试其他策略
                         strategy_success = True
                     else:
@@ -1041,21 +1026,21 @@ def process_legacy_to_modern_conversion(
                         for item in result.applied_logs:
                             log(f"    - {item}")
 
-                        output_path = output_dir / jp_template_path.name
+                        output_path = output_dir / modern_path.name
                         save_ok, save_msg = template_bundle.save(output_path, save_options)
                         if save_ok:
                             log(f"    ✅ {t('log.file.saved', path=output_path)}")
                             total_changes += result.applied_count
                             strategy_success = True
                             strategy_total_changes += result.applied_count
-                            file_pairs.append(FilePair(output_path, jp_template_path))
-                            current_output.append((jp_template_path.name, result.applied_count))
+                            file_pairs.append(FilePair(output_path, modern_path))
+                            current_output.append((modern_path.name, result.applied_count))
                         else:
                             log(f"    ❌ {t('log.file.save_failed', path=output_path, error=save_msg)}")
-                            current_failed.append((jp_template_path.name, save_msg))
+                            current_failed.append((modern_path.name, save_msg))
                 else:
                     log(f"  > {t('log.file.no_changes_made')}")
-                    current_skipped.append(jp_template_path.name)
+                    current_skipped.append(modern_path.name)
 
             # 如果当前策略成功替换了至少一个资源，就结束
             if strategy_success:
@@ -1091,7 +1076,7 @@ def process_legacy_to_modern_conversion(
             for name, reason in failed_files:
                 log(t('log.summary.failed_item', name=name, reason=reason))
 
-        return True, t("message.legacy_convert.global_to_jp_success", bundle_count=len(output_files), asset_count=total_changes), file_pairs
+        return True, t("message.legacy_convert.legacy_to_modern_success", bundle_count=len(output_files), asset_count=total_changes), file_pairs
 
     except Exception as e:
         log(f"\n❌ {t('common.error')}: {t('log.error_detail', error=e)}")

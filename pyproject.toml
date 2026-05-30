@@ -1,15 +1,16 @@
 [project]
 name = "BA-Modding-Toolkit"
-version = "1.1.0"
+version = "2.1.2"
 description = "更新、移植、修复碧蓝档案mod的工具集 | Updating&Porting&Fixing Mods for Blue Archive"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "pillow>=10.4.0",
-    "spineatlas>=1.0.12",
+    "spineatlas>=1.0.13",
     "tkinterdnd2>=0.4.3",
     "toml>=0.10.2",
     "ttkbootstrap>=1.10.1",
+    "typed-argument-parser>=1.12.0",
     "unitypy==1.23.0",
 ]
 
@@ -22,3 +23,9 @@ where = ["src"]
 
 [project.scripts]
 bamt = "ba_modding_toolkit.gui.main:main"
+bamt-cli = "ba_modding_toolkit.cli.main:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from ...i18n import t
 from ... import core
+from ...searching import collect_candidates_by_core, get_search_dirs
 from ..base_tab import TabFrame
 from ..components import DropZone, SettingRow, UIComponents, FileListbox
 from ..utils import confirm_and_replace
@@ -17,14 +18,15 @@ class AssetPackerTab(TabFrame):
         self.asset_paths: list[Path] = []
         self.current_file_pairs: list[tuple[Path, Path]] = []
         
-        # 资源文件夹
+        # 资源文件列表
         self.assets_listbox = FileListbox(
-            self, title=t("ui.label.assets_folder_to_pack"),
+            self, title=t("ui.label.assets_to_pack"),
             file_list=self.asset_paths,
             placeholder_text=t("ui.packer.placeholder_assets"),
             height=5,
             allowed_suffixes={".png", ".skel", ".atlas", ".bytes"},
-            logger=self.logger
+            logger=self.logger,
+            on_files_added=self._on_assets_added
         )
         self.assets_listbox.get_frame().pack(fill=tk.X, pady=(0, 10))
 
@@ -73,6 +75,38 @@ class AssetPackerTab(TabFrame):
         for p in paths:
             self.logger.log(f"  - {p.name}")
         self.logger.status(t("status.ready"))
+
+    def _on_assets_added(self, added_paths: list[Path]):
+        """资源文件添加回调：从空到有资源时自动搜索对应 bundle"""
+        # 当添加后长度等于本次添加数量时，说明添加前列表为空
+        if len(self.asset_paths) == len(added_paths):
+            self.run_in_thread(self._auto_search_target_bundles)
+
+    def _auto_search_target_bundles(self):
+        """在后台线程中搜索匹配的 bundle，结果通过 after 回主线程填充"""
+        self.master.after(0, lambda: self.bundle_zone.set_searching())
+        self.logger.status(t("status.processing_detailed"))
+
+        search_dirs = get_search_dirs(Path(self.app.game_resource_dir_var.get()))
+        candidates, _ = collect_candidates_by_core(self.asset_paths, search_dirs, self.logger.log)
+
+        self.master.after(0, lambda: self._handle_search_result(candidates))
+
+    def _handle_search_result(self, found_paths: list[Path]):
+        """处理自动搜索结果"""
+        if not found_paths:
+            self.bundle_zone.set_error(t("message.search.no_matching_files_in_dir"))
+            self.logger.status(t("status.search_not_found"))
+        elif len(found_paths) == 1:
+            self.bundle_paths = found_paths
+            self.bundle_zone.set_files(found_paths)
+            self.logger.log(t("log.file.loaded", path=found_paths[0]))
+            self.logger.status(t("status.ready"))
+        else:
+            self.bundle_paths = found_paths
+            self.bundle_zone.set_files(found_paths)
+            self.logger.log(t("message.search.found_multiple_matches", count=len(found_paths)))
+            self.logger.status(t("status.ready"))
 
     def run_replacement_thread(self):
         if not all([self.bundle_paths, self.asset_paths, self.app.output_dir_var.get()]):

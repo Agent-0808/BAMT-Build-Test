@@ -4,9 +4,12 @@ import tkinter as tk
 import ttkbootstrap as tb
 from tkinterdnd2 import DND_FILES
 from pathlib import Path
-from typing import Callable, Any
+from typing import Callable, Any, TYPE_CHECKING
 
-from .utils import select_file, select_directory
+if TYPE_CHECKING:
+    from .app import App
+
+from .utils import select_file, select_directory, open_directory
 from ..i18n import t
 from ..naming import parse_filename
 
@@ -153,15 +156,7 @@ class UIComponents:
 
     @staticmethod
     def create_checkbutton(parent, text, variable, command=None):
-        """创建复选框组件
-        
-        Args:
-            parent: 父组件
-            text: 复选框文本（form_row=True时忽略）
-            variable: 变量
-            command: 命令回调
-            form_row: 是否作为表单行使用（True时不显示文本，文本由外部Label显示）
-        """
+        """创建复选框组件"""
         checkbutton = tb.Checkbutton(
             parent, 
             text=text, 
@@ -283,7 +278,7 @@ class DropZone(tb.Labelframe):
         clear_cmd: Callable[[], None] | None = None,
         allow_folder: bool = False,
         allow_multiple: bool = True,
-        logger=None,
+        logger: Logger | None = None,
         **kwargs
     ):
         super().__init__(parent, text=title, padding=(15, 12), **kwargs)
@@ -297,6 +292,8 @@ class DropZone(tb.Labelframe):
         self._allow_multiple = allow_multiple
         self._logger = logger
         self._paths: list[Path] = []
+        self._open_btn = None  # "打开"按钮引用
+        self._clear_btn = None  # "清除"按钮引用
 
         if search_path_var is not None:
             search_frame = tb.Frame(self)
@@ -305,7 +302,6 @@ class DropZone(tb.Labelframe):
             UIComponents.create_textbox_entry(
                 search_frame,
                 textvariable=search_path_var,
-                placeholder_text=t("ui.label.game_resource_dir"),
                 readonly=True
             ).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
@@ -329,7 +325,11 @@ class DropZone(tb.Labelframe):
         button_text = t("action.browse_folder") if allow_folder else t("action.browse_file")
         UIComponents.create_button(btn_frame, button_text, self._handle_browse, bootstyle="primary", style="short").pack(side=tk.LEFT, padx=(0, 5))
 
-        UIComponents.create_button(btn_frame, t("action.clear"), self.clear, bootstyle="warning", style="short").pack(side=tk.LEFT)
+        self._open_btn = UIComponents.create_button(btn_frame, t("action.open"), self._handle_open_directory, bootstyle="info", style="short", state=tk.DISABLED)
+        self._open_btn.pack(side=tk.LEFT, padx=(0, 5))
+
+        self._clear_btn = UIComponents.create_button(btn_frame, t("action.clear"), self.clear, bootstyle="warning", style="short", state=tk.DISABLED)
+        self._clear_btn.pack(side=tk.LEFT)
 
     @property
     def paths(self) -> list[Path]:
@@ -342,7 +342,7 @@ class DropZone(tb.Labelframe):
         return self._paths[0] if self._paths else None
 
     def set_files(self, paths: list[Path] | Path) -> None:
-        """外部设置文件列表，支持单Path或Path列表"""
+        """设置文件列表，支持单Path或Path列表"""
         # 统一转换为列表
         if isinstance(paths, Path):
             paths = [paths]
@@ -354,6 +354,14 @@ class DropZone(tb.Labelframe):
         self._paths = paths
         if paths:
             self._update_display()
+        self._update_btn_state()
+        
+        # 触发回调
+        if self._on_files_selected:
+            if self._allow_multiple:
+                self._on_files_selected(paths)
+            else:
+                self._on_files_selected(paths[0])
 
     def _update_display(self) -> None:
         """根据当前文件列表更新 UI 显示"""
@@ -389,8 +397,25 @@ class DropZone(tb.Labelframe):
         """清除状态，恢复初始状态，并调用外部清理回调"""
         self._paths = []
         self.label.config(text=self.placeholder_text, bootstyle="inverse-light")
+        self._update_btn_state()
         if self._clear_cmd:
             self._clear_cmd()
+
+    def _handle_open_directory(self) -> None:
+        """打开选中文件所在的目录"""
+        if not self._paths:
+            return
+
+        directory = self._paths[0].parent
+        open_directory(directory, log=self._logger.log if self._logger else None)
+
+    def _update_btn_state(self) -> None:
+        """更新"打开"和"清除"按钮的启用/禁用状态"""
+        state = tk.NORMAL if self._paths else tk.DISABLED
+        if self._open_btn:
+            self._open_btn.config(state=state)
+        if self._clear_btn:
+            self._clear_btn.config(state=state)
 
     def _handle_drop(self, event: tk.Event) -> None:
         """内部处理拖放事件，支持多文件和文件夹"""
@@ -412,7 +437,7 @@ class DropZone(tb.Labelframe):
             self.set_warning(t("ui.drop_zone.multiple_files_rejected"))
             return
         
-        self._set_files(paths_to_add[:1] if not self._allow_multiple else paths_to_add)
+        self.set_files(paths_to_add[:1] if not self._allow_multiple else paths_to_add)
 
     def _handle_browse(self) -> None:
         """内部处理浏览按钮，支持多文件选择"""
@@ -425,7 +450,7 @@ class DropZone(tb.Labelframe):
                 dir_path = Path(path)
                 bundle_files = sorted(f for f in dir_path.iterdir() if f.is_file() and f.suffix == '.bundle')
                 if bundle_files:
-                    self._set_files(bundle_files[:1] if not self._allow_multiple else bundle_files)
+                    self.set_files(bundle_files[:1] if not self._allow_multiple else bundle_files)
         else:
             select_file(
                 title=t("ui.dialog.select", type=self.cget("text")),
@@ -438,17 +463,7 @@ class DropZone(tb.Labelframe):
     def _handle_browse_callback(self, paths: list[Path]) -> None:
         """浏览选择后的回调处理"""
         if paths:
-            self._set_files(paths)
-
-    def _set_files(self, paths: list[Path]) -> None:
-        """设置文件列表并触发回调"""
-        self._paths = paths
-        self._update_display()
-        if self._on_files_selected:
-            if self._allow_multiple:
-                self._on_files_selected(paths)
-            else:
-                self._on_files_selected(paths[0])
+            self.set_files(paths)
 
     @staticmethod
     def _debounce_wraplength(event: tk.Event) -> None:
@@ -467,7 +482,7 @@ class SettingRow:
     def create_container(parent: tk.Widget) -> tb.Frame:
         """创建标准的行容器，带有底部间距"""
         frame = tb.Frame(parent)
-        frame.pack(fill=tk.X, padx=5, pady=5)  # 垂直间距，让每一行呼吸感更强
+        frame.pack(fill=tk.X, padx=5, pady=4)  # 垂直间距，让每一行呼吸感更强
         return frame
 
     @staticmethod
@@ -486,27 +501,68 @@ class SettingRow:
             tip_label.pack(side=tk.LEFT, padx=(5, 0))
 
     @staticmethod
+    def _setup_dependency(
+        widget: tk.Widget,
+        app: "App",
+        depends_on: str,
+        on_disabled: Callable[[], None],
+        on_enabled: Callable[[], None],
+        parent: tk.Widget,
+        on_click_disabled: Callable[[tk.Widget], None]
+    ) -> None:
+        """设置依赖管理：当依赖无效时禁用控件，点击时显示下载引导"""
+        def update_status():
+            # 检查控件是否仍然存在
+            try:
+                widget.winfo_exists()
+            except tk.TclError:
+                return
+            
+            available = app.check_dependency(depends_on)
+            if not available:
+                on_disabled()
+                widget.bind('<Button-1>', lambda e: on_click_disabled(parent))
+            else:
+                on_enabled()
+                widget.unbind('<Button-1>')
+        
+        dep_var = getattr(app, depends_on)
+        dep_var.trace_add('write', lambda *_: update_status())
+        update_status()
+
+    @staticmethod
     def create_switch(
         parent: tk.Widget,
         label: str,
         variable: tk.BooleanVar,
         tooltip: str | None = None,
-        command: Callable[[], Any] | None = None
+        command: Callable[[], Any] | None = None,
+        app: "App | None" = None,
+        depends_on: str | None = None,
+        on_click_disabled: Callable[[tk.Widget], None] | None = None
     ) -> tb.Checkbutton:
         """创建开关行"""
         container = SettingRow.create_container(parent)
         SettingRow._add_label_area(container, label, tooltip)
         
-        # 核心改变：使用 success-round-toggle 样式
-        # side=RIGHT 确保开关始终在最右侧
         chk = tb.Checkbutton(
             container,
             variable=variable,
             command=command,
             style="success-square-toggle",
-            text=""  # 开关本身不需要文字，文字在左侧 Label
+            text=""
         )
         chk.pack(side=tk.RIGHT)
+        
+        if app and depends_on:
+            SettingRow._setup_dependency(
+                chk, app, depends_on,
+                on_disabled=lambda: (chk.config(state=tk.DISABLED), variable.set(False)),
+                on_enabled=lambda: chk.config(state=tk.NORMAL),
+                parent=parent,
+                on_click_disabled=on_click_disabled
+            )
+        
         return chk
 
     @staticmethod
@@ -547,16 +603,21 @@ class SettingRow:
         text_var: tk.StringVar,
         tooltip: str | None = None,
         placeholder_text: str | None = None,
-        expand: bool = False
+        expand: bool = False,
+        app: "App | None" = None,
+        depends_on: str | None = None,
+        on_click_disabled: Callable[[tk.Widget], None] | None = None
     ) -> tb.Entry:
-        """创建输入行"""
+        """创建输入行，支持依赖管理和点击提示
+        
+        Args:
+            on_click_disabled: 点击禁用控件时的回调
+        """
         container = SettingRow.create_container(parent)
         SettingRow._add_label_area(container, label, tooltip)
         
         entry = tb.Entry(container, textvariable=text_var, width = 10)
-        # 使用传统方式实现占位符功能
         if placeholder_text:
-            # 初始显示占位符
             if not text_var.get():
                 entry.insert(0, placeholder_text)
             
@@ -575,6 +636,16 @@ class SettingRow:
             entry.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(10, 0))
         else:
             entry.pack(side=tk.RIGHT, padx=(10, 0))
+        
+        if app and depends_on:
+            SettingRow._setup_dependency(
+                entry, app, depends_on,
+                on_disabled=lambda: entry.config(state=tk.DISABLED),
+                on_enabled=lambda: entry.config(state=tk.NORMAL),
+                parent=parent,
+                on_click_disabled=on_click_disabled
+            )
+        
         return entry
 
     @staticmethod
@@ -588,7 +659,7 @@ class SettingRow:
     ) -> tb.Combobox:
         """创建下拉框行"""
         if width is None:
-            width = max((len(v) for v in values), default=0) + 2
+            width = max((len(str(v)) for v in values), default=0) + 2
         container = SettingRow.create_container(parent)
         SettingRow._add_label_area(container, label, tooltip)
         
@@ -630,6 +701,31 @@ class SettingRow:
         return container
 
     @staticmethod
+    def create_spinbox_row(
+        parent: tk.Widget,
+        label: str,
+        int_var: tk.IntVar,
+        from_: int = 1,
+        to: int = 8,
+        tooltip: str | None = None,
+        width: int | None = None,
+    ) -> tb.Spinbox:
+        """创建数值选择器行"""
+        container = SettingRow.create_container(parent)
+        SettingRow._add_label_area(container, label, tooltip)
+        if width is None:
+            width = len(str(to)) + 2
+
+        spinbox = tb.Spinbox(
+            container,
+            from_=from_, to=to,
+            textvariable=int_var,
+            width=width,
+        )
+        spinbox.pack(side=tk.RIGHT, padx=(10, 0))
+        return spinbox
+
+    @staticmethod
     def create_button_row(
         parent: tk.Widget,
         label: str,
@@ -641,10 +737,10 @@ class SettingRow:
         """创建按钮行"""
         container = SettingRow.create_container(parent)
         SettingRow._add_label_area(container, label, tooltip)
-        
+
         button = UIComponents.create_button(container, button_text, command, bootstyle=bootstyle, style="compact")
         button.pack(side=tk.RIGHT)
-        
+
         return container
 
 
@@ -697,7 +793,7 @@ class ModeSwitcher:
 class FileListbox:
     """可复用的文件列表框组件，支持拖放、多选、添加/删除文件等功能"""
     
-    def __init__(self, parent, title:str, file_list:list[Path] = [], placeholder_text:str | None = None, height=10, logger=None,
+    def __init__(self, parent, title:str, file_list:list[Path] = [], placeholder_text:str | None = None, height=10, logger: Logger | None = None,
     display_formatter: Callable[[Path], str] | None = None, 
     on_files_added: Callable[[list[Path]], None] | None = None,
     allowed_suffixes: set[str] = {".bundle"}
