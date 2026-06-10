@@ -1,34 +1,17 @@
-name: Build Executables
+name: build executable file
 
 on:
   push:
     tags:
       - 'v*' # Trigger when push tag start with v (etc. v0.1.0)
   workflow_dispatch: # Manual
-
+  
 permissions:
   contents: write
-
+  
 jobs:
-  build:
+  build-windows:
     runs-on: windows-latest
-    strategy:
-      matrix:
-        include:
-          - name: GUI
-            artifact-name: BA-Modding-Toolkit-Windows-Build
-            exe-name: BA-Modding-Toolkit.exe
-            script-name: ba_modding_toolkit/__main__.py
-            console-mode: disable
-            product-name: "BA Modding Toolkit"
-            file-description: "BA Modding Toolkit"
-          - name: CLI
-            artifact-name: BAMT-CLI-Windows-Build
-            exe-name: BAMT-CLI.exe
-            script-name: ba_modding_toolkit/cli/__main__.py
-            console-mode: force
-            product-name: "BA Modding Toolkit CLI"
-            file-description: "BA Modding Toolkit - Command Line Interface"
 
     steps:
       - name: Checkout Code
@@ -49,6 +32,7 @@ jobs:
       - name: Install Dependencies
         run: uv export --no-hashes -o requirements.txt && pip install -r requirements.txt
 
+      # 从 pyproject.toml 提取版本号并生成 _version.py 文件
       - name: Extract Version and Generate Meta
         id: get_version
         shell: python
@@ -96,66 +80,75 @@ jobs:
               print(f"version={version}", file=fh)
               print(f"file_version={file_version}", file=fh)
 
-      - name: Build Executable with Nuitka (${{ matrix.name }})
+      - name: Build Executable with Nuitka (${{ matrix.compiler.name }})
         uses: Nuitka/Nuitka-Action@main
         with:
           nuitka-version: main
           working-directory: src
-          script-name: ${{ matrix.script-name }}
+          script-name: ba_modding_toolkit
           mode: onefile
+          python-flag: "-m"
 
           # 元数据
           windows-icon-from-ico: ba_modding_toolkit/assets/eligma.ico
-          product-name: ${{ matrix.product-name }}
+          product-name: "BA Modding Toolkit"
           product-version: ${{ steps.get_version.outputs.file_version }}
           file-version: ${{ steps.get_version.outputs.file_version }}
-          file-description: ${{ matrix.file-description }}
+          file-description: "BA Modding Toolkit"
           company-name: "Agent-0808"
           copyright: "Copyright ©2025-2026 Agent-0808. Licensed under GPLv3."
           trademarks: "Blue Archive ©NEXON Games Co., Ltd. & Yostar, Inc. This tool is unofficial and not endorsed by them."
 
           clang: true
           low-memory: true
+          # lto: "no"
+          # jobs: 1
           enable-plugins: tk-inter
+          # 包含代码依赖包
           include-package: |
             ba_modding_toolkit
             UnityPy.resources
+          # 包含依赖包的数据文件
           include-package-data: |
             ba_modding_toolkit
             UnityPy
             archspec
+          # 包含资源目录
           include-data-dir: |
             ba_modding_toolkit/assets=ba_modding_toolkit/assets
             ba_modding_toolkit/locales=ba_modding_toolkit/locales
-          windows-console-mode: ${{ matrix.console-mode }}
+          windows-console-mode: hide
           output-dir: ../build
-          output-file: ${{ matrix.exe-name }}
+          output-file: "BA-Modding-Toolkit.exe"
           assume-yes-for-downloads: true
 
+      # 整理发布文件夹
       - name: Prepare Release Directory
         run: |
-          $publish_dir = "publish-${{ matrix.name }}"
-          New-Item -ItemType Directory -Path $publish_dir -Force
-          Copy-Item -Path "build/${{ matrix.exe-name }}" -Destination "$publish_dir/"
-          ${{ matrix.name == 'GUI' && 'Copy-Item -Path "src/ba_modding_toolkit/locales" -Destination "publish-GUI/locales" -Recurse' || '' }}
+          New-Item -ItemType Directory -Path "publish" -Force
+          Copy-Item -Path "build/BA-Modding-Toolkit.exe" -Destination "publish/"
+          Copy-Item -Path "src/ba_modding_toolkit/locales" -Destination "publish/locales" -Recurse
         shell: powershell
 
+      # 上传 Artifact
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact-name }}
-          path: publish-${{ matrix.name }}/
+          name: BA-Modding-Toolkit-Windows-Build
+          path: publish/
 
+      # 打包成 Zip
       - name: Zip Release Asset (When Trigger With Tag)
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           $tag_name = "${{ github.ref_name }}"
-          cd publish-${{ matrix.name }}
-          Compress-Archive -Path * -DestinationPath "../${{ matrix.artifact-name }}-$tag_name.zip"
+          cd publish
+          Compress-Archive -Path * -DestinationPath "../BA-Modding-Toolkit-$tag_name.zip"
         shell: powershell
 
+      # 上传 Zip
       - name: Upload Release Asset (When Trigger With Tag)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          files: ${{ matrix.artifact-name }}-${{ github.ref_name }}.zip
+          files: BA-Modding-Toolkit-${{ github.ref_name }}.zip
